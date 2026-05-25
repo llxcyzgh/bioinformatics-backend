@@ -1,19 +1,9 @@
-import time
-from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, DateTime
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 
+from pkg.helpers.time_helper import get_timestamp, get_utc_now
+
 Base = declarative_base()
-
-
-def get_utc_now():
-    """Get current UTC datetime"""
-    return datetime.now(timezone.utc)
-
-
-def get_timestamp():
-    """Get current Unix timestamp"""
-    return int(time.time())
 
 
 class Model(Base):

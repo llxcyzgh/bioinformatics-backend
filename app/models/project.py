@@ -1,11 +1,12 @@
-from sqlalchemy import Column, String, Integer, DateTime
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 
 from app.models.model import Model
 from pkg.helpers.time_helper import get_utc_now
 
 
-class User(Model):
-    __tablename__ = "users"
+class Project(Model):
+    __tablename__ = "projects"
 
     # 显式定义这些字段以确保顺序 (会覆盖基类定义)
     id = Column(Integer, primary_key=True, index=True)
@@ -14,22 +15,23 @@ class User(Model):
     deleted_at = Column(Integer, default=0, nullable=False)
 
     # 业务字段
-    email = Column(String, unique=True, index=True, nullable=False, default='')
-    username = Column(String, index=True, nullable=False, default='')
-    hashed_password = Column(String, nullable=False, default='')
-    full_name = Column(String, nullable=False, default='')
-    reset_password_signature = Column(String, nullable=False, default='')
+    name = Column(String, nullable=False, default='')
+    description = Column(String, nullable=True, default='')
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, default=0)
+
+    # 关系
+    user = relationship("User", backref="projects")
 
     def __repr__(self):
-        return f"<User {self.username}>"
+        return f"<Project {self.name}>"
 
     def to_dict(self):
-        """User specific to_dict that hides password"""
+        """Convert model to dictionary"""
         return {
             "id": self.id,
-            "email": self.email,
-            "username": self.username,
-            "full_name": self.full_name,
+            "name": self.name,
+            "description": self.description,
+            "user_id": self.user_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
