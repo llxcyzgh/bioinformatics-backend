@@ -8,6 +8,8 @@
 - **数据库**: SQLite 支持
 - **项目结构**: Laravel 风格的分层架构
 - **环境配置**: 使用 .env 管理配置
+- **软删除**: 支持 Laravel 风格的软删除 (deleted_at)
+- **时间戳**: 自动管理 created_at 和 updated_at
 
 ## 目录结构
 
@@ -18,7 +20,7 @@ backend/
 │   │   ├── controllers/    # 控制器层
 │   │   ├── middleware/     # 中间件层
 │   │   └── requests/       # 请求验证层
-│   ├── models/             # 数据模型层
+│   ├── models/             # 数据模型层 (含软删除和时间戳)
 │   └── services/           # 业务逻辑层
 ├── config/                 # 配置文件
 ├── database/               # 数据库连接
@@ -45,7 +47,11 @@ cp .env.example .env
 ### 3. 初始化数据库
 
 ```bash
+# 创建/更新数据库表
 python migrate_seed.py
+
+# 删除所有表并重新创建 (开发环境)
+python migrate_seed.py --fresh
 ```
 
 ### 4. 启动服务
@@ -55,6 +61,45 @@ uvicorn main:app --reload
 ```
 
 服务将在 `http://localhost:8000` 启动。
+
+## 模型特性
+
+所有模型继承自 `Model` 基类，自动包含以下字段：
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| id | Integer | 主键 |
+| created_at | DateTime | 创建时间 (自动生成) |
+| updated_at | DateTime | 更新时间 (自动更新) |
+| deleted_at | DateTime | 软删除时间 (NULL 表示未删除) |
+
+### 软删除方法
+
+```python
+from app.models import User
+from database import SessionLocal
+
+db = SessionLocal()
+
+# 获取所有未删除的记录 (自动过滤 deleted_at)
+users = User.all(db)
+
+# 包含已删除的记录
+all_users = User.with_trashed(db).all()
+
+# 只获取已删除的记录
+deleted_users = User.only_trashed(db).all()
+
+# 软删除
+user = User.find(db, 1)
+user.delete(db)
+
+# 永久删除
+user.force_delete(db)
+
+# 恢复已删除的记录
+user.restore(db)
+```
 
 ## API 端点
 
@@ -74,7 +119,7 @@ uvicorn main:app --reload
 | GET | `/api/users/{id}` | 获取指定用户 |
 | POST | `/api/users/` | 创建新用户 |
 | PUT | `/api/users/{id}` | 更新用户 |
-| DELETE | `/api/users/{id}` | 删除用户 |
+| DELETE | `/api/users/{id}` | 软删除用户 |
 
 ## 测试账号
 
@@ -105,7 +150,9 @@ curl -X POST http://localhost:8000/api/auth/login \
     "id": 1,
     "email": "admin@bioflow.com",
     "username": "admin",
-    "full_name": "Administrator"
+    "full_name": "Administrator",
+    "created_at": "2026-05-25T10:09:23.386264",
+    "updated_at": "2026-05-25T10:09:23.386267"
   }
 }
 ```
@@ -133,6 +180,16 @@ curl http://localhost:8000/api/auth/me \
 1. 在 `app/models/` 创建模型文件
 2. 继承 `Model` 基类
 3. 运行 `python migrate_seed.py` 创建表
+
+```python
+from sqlalchemy import String
+from app.models.model import Model
+
+class Post(Model):
+    __tablename__ = "posts"
+    title = Column(String, nullable=False)
+    content = Column(String)
+```
 
 ### 添加新的 Controller
 

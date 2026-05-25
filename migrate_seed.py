@@ -1,3 +1,4 @@
+import sys
 from app.services import AuthService
 from app.models import Base, User
 from database import engine, SessionLocal
@@ -41,6 +42,16 @@ def migrate():
     print("Database tables created successfully!")
 
 
+def migrate_fresh():
+    """Drop all tables and recreate them"""
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    print("Database tables recreated successfully!")
+
+
 if __name__ == "__main__":
-    migrate()
+    if len(sys.argv) > 1 and sys.argv[1] == "--fresh":
+        migrate_fresh()
+    else:
+        migrate()
     seed_users()
