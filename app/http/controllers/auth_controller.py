@@ -27,6 +27,22 @@ class AuthController:
         )
 
     @staticmethod
+    def register(email: str, password: str, db: Session) -> JSONResponse:
+        """Handle registration request"""
+        result, error = AuthService.register(email, password, db)
+
+        if error:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": error}
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content=result
+        )
+
+    @staticmethod
     def logout():
         """Handle logout request"""
         # For JWT, logout is handled client-side by deleting token

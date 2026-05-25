@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.http.controllers import AuthController
 from app.http.middleware import Auth
-from app.http.requests import LoginRequest
+from app.http.requests import LoginRequest, RegisterRequest
 from database import get_db
 from app.models import User
 
@@ -17,6 +17,18 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     POST /api/auth/login
     """
     return AuthController.login(request.email, request.password, db)
+
+
+@router.post("/register", response_class=JSONResponse)
+def register(request: RegisterRequest, db: Session = Depends(get_db)):
+    """Register endpoint
+    POST /api/auth/register
+    """
+    return AuthController.register(
+        request.email,
+        request.password,
+        db
+    )
 
 
 @router.post("/logout")

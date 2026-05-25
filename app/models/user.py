@@ -20,10 +20,11 @@ class User(Model):
     deleted_at = Column(Integer, default=0, nullable=False)
 
     # 业务字段
-    email = Column(String, unique=True, index=True, nullable=False)
-    username = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    full_name = Column(String)
+    email = Column(String, unique=True, index=True, nullable=False, default='')
+    username = Column(String, index=True, nullable=False, default='')
+    hashed_password = Column(String, nullable=False, default='')
+    full_name = Column(String, nullable=False, default='')
+    reset_password_signature = Column(String, nullable=False, default='')
 
     def __repr__(self):
         return f"<User {self.username}>"

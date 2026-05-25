@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import bcrypt
@@ -24,9 +24,9 @@ class AuthService:
         """Create a JWT access token"""
         to_encode = data.copy()
         if expires_delta:
-            expire = datetime.utcnow() + expires_delta
+            expire = datetime.now(timezone.utc) + expires_delta
         else:
-            expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+            expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         to_encode.update({"exp": expire})
         return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -54,6 +54,32 @@ class AuthService:
 
         if not bcrypt.checkpw(password.encode('utf-8'), user.hashed_password.encode('utf-8')):
             return None, "账号密码不匹配"
+
+        access_token = AuthService.create_access_token(data={"sub": str(user.id)})
+        return {
+            "token": access_token,
+            "user": user.to_dict(),
+        }, None
+
+    @staticmethod
+    def register(email: str, password: str, db: Session) -> tuple[Optional[dict], Optional[str]]:
+        """
+        Register a new user and return token
+        Returns (result_dict, None) on success, (None, error_message) on failure
+        """
+        # Check if email already exists
+        existing_user = db.query(User).filter(User.email == email, User.deleted_at == 0).first()
+        if existing_user:
+            return None, "Email already registered"
+
+        # Create user
+        user = User(
+            email=email,
+            hashed_password=AuthService.hash_password(password),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
         access_token = AuthService.create_access_token(data={"sub": str(user.id)})
         return {
