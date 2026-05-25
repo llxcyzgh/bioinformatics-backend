@@ -16,16 +16,10 @@ def seed_users():
                     full_name="Administrator"
                 ),
                 User(
-                    email="researcher@bioflow.com",
-                    username="researcher",
-                    hashed_password=AuthService.hash_password("research123"),
-                    full_name="Researcher"
-                ),
-                User(
-                    email="student@bioflow.com",
-                    username="student",
-                    hashed_password=AuthService.hash_password("student123"),
-                    full_name="Student User"
+                    email="user@bioflow.com",
+                    username="user",
+                    hashed_password=AuthService.hash_password("user123"),
+                    full_name="User"
                 ),
             ]
             session.add_all(users)

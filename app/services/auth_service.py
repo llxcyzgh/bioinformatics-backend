@@ -1,29 +1,23 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import HTTPException, status
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.models import User
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class AuthService:
     """Authentication service, similar to Laravel's Auth facade"""
 
     @staticmethod
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Verify a password against its hash"""
-        return pwd_context.verify(plain_password, hashed_password)
-
-    @staticmethod
     def hash_password(password: str) -> str:
         """Hash a password"""
-        return pwd_context.hash(password)
+        salt = bcrypt.gensalt()
+        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
     @staticmethod
     def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -47,37 +41,22 @@ class AuthService:
             return None
 
     @staticmethod
-    def authenticate(email: str, password: str, db: Session) -> User:
-        """
-        Authenticate a user
-        Similar to Laravel's Auth::attempt()
-        """
-        user = db.query(User).filter(User.email == email).first()
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
-            )
-
-        if not AuthService.verify_password(password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
-            )
-
-        return user
-
-    @staticmethod
-    def login(email: str, password: str, db: Session) -> dict:
+    def login(email: str, password: str, db: Session) -> tuple[Optional[dict], Optional[str]]:
         """
         Login a user and return token
-        Similar to Laravel's Auth::login() + token creation
+        Returns (result_dict, None) on success, (None, error_message) on failure
         """
-        user = AuthService.authenticate(email, password, db)
+        stmt = select(User).where(User.email == email, User.deleted_at == 0)
+        user = db.scalar(stmt)
+
+        if not user:
+            return None, "账号密码不正确"
+
+        if not bcrypt.checkpw(password.encode('utf-8'), user.hashed_password.encode('utf-8')):
+            return None, "账号密码不匹配"
+
         access_token = AuthService.create_access_token(data={"sub": str(user.id)})
         return {
-            "access_token": access_token,
-            "token_type": "bearer",
+            "token": access_token,
             "user": user.to_dict(),
-        }
+        }, None

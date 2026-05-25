@@ -1,7 +1,7 @@
+import time
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, DateTime
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.sql import func
 
 Base = declarative_base()
 
@@ -9,6 +9,11 @@ Base = declarative_base()
 def get_utc_now():
     """Get current UTC datetime"""
     return datetime.now(timezone.utc)
+
+
+def get_timestamp():
+    """Get current Unix timestamp"""
+    return int(time.time())
 
 
 class Model(Base):
@@ -29,7 +34,7 @@ class Model(Base):
 
     @declared_attr
     def deleted_at(cls):
-        return Column(DateTime, nullable=True)
+        return Column(Integer, default=0, nullable=False)
 
     def to_dict(self):
         """Convert model to dictionary"""
@@ -38,17 +43,17 @@ class Model(Base):
     @classmethod
     def find(cls, db, id):
         """Find by ID, similar to Laravel's find()"""
-        return db.query(cls).filter(cls.id == id, cls.deleted_at.is_(None)).first()
+        return db.query(cls).filter(cls.id == id, cls.deleted_at == 0).first()
 
     @classmethod
     def all(cls, db):
         """Get all records, similar to Laravel's all()"""
-        return db.query(cls).filter(cls.deleted_at.is_(None)).all()
+        return db.query(cls).filter(cls.deleted_at == 0).all()
 
     @classmethod
     def where(cls, db, **kwargs):
         """Query with conditions, similar to Laravel's where()"""
-        return db.query(cls).filter_by(**kwargs).filter(cls.deleted_at.is_(None))
+        return db.query(cls).filter_by(**kwargs).filter(cls.deleted_at == 0)
 
     @classmethod
     def with_trashed(cls, db):
@@ -58,7 +63,7 @@ class Model(Base):
     @classmethod
     def only_trashed(cls, db):
         """Get only soft-deleted records, similar to Laravel's onlyTrashed()"""
-        return db.query(cls).filter(cls.deleted_at.isnot(None))
+        return db.query(cls).filter(cls.deleted_at != 0)
 
     def save(self, db):
         """Save model, similar to Laravel's save()"""
@@ -69,7 +74,7 @@ class Model(Base):
 
     def delete(self, db):
         """Soft delete model, similar to Laravel's delete()"""
-        self.deleted_at = get_utc_now()
+        self.deleted_at = get_timestamp()
         db.commit()
         return True
 
@@ -81,6 +86,6 @@ class Model(Base):
 
     def restore(self, db):
         """Restore soft-deleted model, similar to Laravel's restore()"""
-        self.deleted_at = None
+        self.deleted_at = 0
         db.commit()
         return True

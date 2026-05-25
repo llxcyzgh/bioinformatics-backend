@@ -17,7 +17,7 @@ class User(Model):
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime, default=get_utc_now, nullable=False)
     updated_at = Column(DateTime, default=get_utc_now, onupdate=get_utc_now, nullable=False)
-    deleted_at = Column(DateTime, nullable=True)
+    deleted_at = Column(Integer, default=0, nullable=False)
 
     # 业务字段
     email = Column(String, unique=True, index=True, nullable=False)

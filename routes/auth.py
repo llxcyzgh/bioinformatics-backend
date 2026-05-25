@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.http.controllers import AuthController
@@ -10,12 +11,12 @@ from app.models import User
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/login")
+@router.post("/login", response_class=JSONResponse)
 def login(request: LoginRequest, db: Session = Depends(get_db)):
     """Login endpoint
     POST /api/auth/login
     """
-    return AuthController.login(str(request.email), request.password, db)
+    return AuthController.login(request.email, request.password, db)
 
 
 @router.post("/logout")

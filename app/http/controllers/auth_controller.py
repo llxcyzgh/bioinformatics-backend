@@ -1,7 +1,8 @@
+from fastapi import status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.services import AuthService
-from database import get_db
 
 
 class AuthController:
@@ -10,9 +11,20 @@ class AuthController:
     """
 
     @staticmethod
-    def login(email: str, password: str, db: Session) -> dict:
+    def login(email: str, password: str, db: Session) -> JSONResponse:
         """Handle login request"""
-        return AuthService.login(email, password, db)
+        result, error = AuthService.login(email, password, db)
+
+        if error:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"error": error}
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=result
+        )
 
     @staticmethod
     def logout():

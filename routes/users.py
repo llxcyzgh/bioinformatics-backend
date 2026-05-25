@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.http.controllers import UserController
@@ -10,7 +11,7 @@ from app.models import User
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/")
+@router.get("/", response_class=JSONResponse)
 def index(db: Session = Depends(get_db)):
     """Get all users
     GET /api/users
@@ -19,7 +20,7 @@ def index(db: Session = Depends(get_db)):
     return UserController.index(db)
 
 
-@router.get("/{user_id}")
+@router.get("/{user_id}", response_class=JSONResponse)
 def show(user_id: int, db: Session = Depends(get_db)):
     """Get a specific user
     GET /api/users/{id}
@@ -27,7 +28,7 @@ def show(user_id: int, db: Session = Depends(get_db)):
     return UserController.show(user_id, db)
 
 
-@router.post("/")
+@router.post("/", response_class=JSONResponse)
 def store(request: CreateUserRequest, db: Session = Depends(get_db)):
     """Create a new user
     POST /api/users
@@ -41,7 +42,7 @@ def store(request: CreateUserRequest, db: Session = Depends(get_db)):
     )
 
 
-@router.put("/{user_id}")
+@router.put("/{user_id}", response_class=JSONResponse)
 def update(user_id: int, request: UpdateUserRequest, db: Session = Depends(get_db)):
     """Update a user
     PUT /api/users/{id}
@@ -55,7 +56,7 @@ def update(user_id: int, request: UpdateUserRequest, db: Session = Depends(get_d
     )
 
 
-@router.delete("/{user_id}")
+@router.delete("/{user_id}", response_class=JSONResponse)
 def destroy(user_id: int, db: Session = Depends(get_db)):
     """Delete a user
     DELETE /api/users/{id}

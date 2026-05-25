@@ -1,9 +1,9 @@
 from typing import List
 
-from fastapi import HTTPException, status
+from fastapi import status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.models import User
 from app.services import UserService
 
 
@@ -19,36 +19,42 @@ class UserController:
         return [user.to_dict() for user in users]
 
     @staticmethod
-    def show(user_id: int, db: Session) -> dict:
+    def show(user_id: int, db: Session) -> JSONResponse:
         """Get a specific user"""
         user = UserService.get_user_by_id(db, user_id)
         if not user:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
+                content={"detail": "User not found"}
             )
-        return user.to_dict()
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=user.to_dict()
+        )
 
     @staticmethod
-    def store(email: str, username: str, password: str, full_name: str | None, db: Session) -> dict:
+    def store(email: str, username: str, password: str, full_name: str | None, db: Session) -> JSONResponse:
         """Create a new user"""
         try:
             user = UserService.create_user(db, email, username, password, full_name)
-            return user.to_dict()
+            return JSONResponse(
+                status_code=status.HTTP_201_CREATED,
+                content=user.to_dict()
+            )
         except ValueError as e:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e)
+                content={"detail": str(e)}
             )
 
     @staticmethod
-    def update(user_id: int, db: Session, **kwargs) -> dict:
+    def update(user_id: int, db: Session, **kwargs) -> JSONResponse:
         """Update a user"""
         user = UserService.get_user_by_id(db, user_id)
         if not user:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
+                content={"detail": "User not found"}
             )
 
         for key, value in kwargs.items():
@@ -57,18 +63,23 @@ class UserController:
 
         db.commit()
         db.refresh(user)
-        return user.to_dict()
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=user.to_dict()
+        )
 
     @staticmethod
-    def destroy(user_id: int, db: Session) -> dict:
+    def destroy(user_id: int, db: Session) -> JSONResponse:
         """Delete a user"""
         user = UserService.get_user_by_id(db, user_id)
         if not user:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
+                content={"detail": "User not found"}
             )
 
-        db.delete(user)
-        db.commit()
-        return {"message": "User deleted successfully"}
+        user.delete(db)
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"message": "User deleted successfully"}
+        )
