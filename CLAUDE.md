@@ -41,13 +41,11 @@ HTTP Request → Route → Controller → Service → Model → Database
                Validation
 ```
 
-## Key Patterns
-
 ### Model Base Class
 
 All models inherit from `Model` (in `app/models/model.py`), which provides:
 - Automatic timestamps (`created_at`, `updated_at`)
-- Soft delete support (`deleted_at`)
+- Soft delete support (`deleted_at` is an **Integer** timestamp, default `0`, not `NULL`)
 - Laravel-like query methods: `find()`, `all()`, `where()`, `with_trashed()`, `only_trashed()`
 - Laravel-like actions: `save()`, `delete()`, `force_delete()`, `restore()`
 
@@ -59,6 +57,20 @@ User.where(db, email="x@y.com")   # Query with conditions
 user.delete(db)                   # Soft delete
 user.restore(db)                  # Restore soft-deleted
 ```
+
+**Model field conventions:** All fields must specify `nullable` and a `default` value. Required fields use `nullable=False` with type-appropriate defaults (`''` for String/Text, `0` for Integer). Foreign keys use `nullable=False, default=0`. See `app/models/` for examples.
+
+### Domain Model Relationships
+
+```
+User
+├── projects (Project.user_id → users.id)
+│   └── tasks (Task.project_id → projects.id)
+│       └── messages (Message.task_id → tasks.id)
+└── tasks (Task.user_id → users.id)
+```
+
+All ownership-aware routes enforce that users can only access their own resources (`user_id` is taken from `current_user.id` and filtered in Service queries).
 
 ### Authentication
 
@@ -74,6 +86,8 @@ from app.http.middleware import Auth
 def protected_route(current_user: User = Auth):
     return current_user.to_dict()
 ```
+
+Login returns `{"token": "...", "user": {...}}` (field name is `token`, not `access_token`). Token expiry is 7 days (`config/auth.py`).
 
 ### Adding New Features
 
@@ -123,7 +137,7 @@ To add a new resource (e.g., "Project"):
 
 6. **Register** - Add to `routes/api.py`:
    ```python
-   from routes.projects import router as project_router
+   from routes.project import router as project_router
    router.include_router(project_router)
    ```
 
@@ -149,5 +163,4 @@ To add a new resource (e.g., "Project"):
 
 After running `migrate_seed.py`:
 - `admin@bioflow.com` / `admin123`
-- `researcher@bioflow.com` / `research123`
-- `student@bioflow.com` / `student123`
+- `user@bioflow.com` / `user123`
