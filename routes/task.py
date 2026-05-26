@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.http.controllers import TaskController
+from app.http.controllers import MessageController, TaskController
 from app.http.middleware import Auth
-from app.http.requests import CreateTaskRequest, UpdateTaskRequest
+from app.http.requests import CreateMessageRequest, CreateTaskRequest, UpdateTaskRequest
 from app.models import User
 from database import get_db
 
@@ -72,3 +72,52 @@ def destroy(
     DELETE /api/tasks/{id}
     """
     return TaskController.destroy(task_id, db, current_user.id)
+
+
+# ---------------------------------------------------------------------------
+# Nested Message routes under /tasks/{task_id}
+# ---------------------------------------------------------------------------
+
+@router.get("/{task_id}/messages", response_class=JSONResponse)
+def messages_index(
+    task_id: int,
+    current_user: User = Auth,
+    db: Session = Depends(get_db)
+):
+    """Get all messages for a task
+    GET /api/tasks/{task_id}/messages
+    """
+    return MessageController.index(task_id, db, current_user.id)
+
+
+@router.post("/{task_id}/messages", response_class=JSONResponse)
+def messages_store(
+    task_id: int,
+    request: CreateMessageRequest,
+    current_user: User = Auth,
+    db: Session = Depends(get_db)
+):
+    """Create a user message and return the AI system response
+    POST /api/tasks/{task_id}/messages
+    """
+    return MessageController.store(
+        task_id,
+        request.type,
+        request.content,
+        request.data,
+        current_user.id,
+        db
+    )
+
+
+@router.delete("/{task_id}/messages/{message_id}", response_class=JSONResponse)
+def messages_destroy(
+    task_id: int,
+    message_id: int,
+    current_user: User = Auth,
+    db: Session = Depends(get_db)
+):
+    """Delete a message
+    DELETE /api/tasks/{task_id}/messages/{message_id}
+    """
+    return MessageController.destroy(message_id, db, current_user.id)
