@@ -1,6 +1,12 @@
 from config.app import APP_NAME, APP_VERSION, DEBUG, SECRET_KEY
 from config.auth import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM
 from config.database import DATABASE_URL, DB_CONNECT_ARGS
+from config.llm import (
+    DASHSCOPE_API_BASE,
+    DASHSCOPE_API_KEY,
+    DASHSCOPE_MODEL_NAME,
+    LLM_PARSER_TIMEOUT,
+)
 
 __all__ = [
     "APP_NAME",
@@ -11,4 +17,8 @@ __all__ = [
     "ALGORITHM",
     "DATABASE_URL",
     "DB_CONNECT_ARGS",
+    "DASHSCOPE_API_KEY",
+    "DASHSCOPE_API_BASE",
+    "DASHSCOPE_MODEL_NAME",
+    "LLM_PARSER_TIMEOUT",
 ]
