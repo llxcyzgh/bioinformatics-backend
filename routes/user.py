@@ -3,10 +3,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.http.controllers import UserController
-from app.http.middleware import Auth
 from app.http.requests import CreateUserRequest, UpdateUserRequest
 from database import get_db
-from app.models import User
 
 router = APIRouter(prefix="/users", tags=["users"])
 
