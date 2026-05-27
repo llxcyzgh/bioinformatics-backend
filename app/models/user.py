@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Integer, DateTime
+from sqlalchemy.orm import relationship
 
 from app.models.model import Model
 from pkg.helpers.time_helper import get_utc_now
@@ -20,16 +21,29 @@ class User(Model):
     full_name = Column(String, nullable=False, default='')
     reset_password_signature = Column(String, nullable=False, default='')
 
+    # 关系
+    roles = relationship("Role", secondary="user_roles", backref="users")
+
     def __repr__(self):
         return f"<User {self.username}>"
 
     def to_dict(self):
         """User specific to_dict that hides password"""
+        seen = set()
+        permissions = []
+        for role in self.roles:
+            for perm in role.permissions:
+                if perm.name not in seen:
+                    seen.add(perm.name)
+                    permissions.append(perm.to_dict())
+
         return {
             "id": self.id,
             "email": self.email,
             "username": self.username,
             "full_name": self.full_name,
+            "roles": [r.to_dict() for r in self.roles],
+            "permissions": permissions,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

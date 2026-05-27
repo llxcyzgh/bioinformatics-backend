@@ -1,8 +1,74 @@
 import sys
 import uuid
 from app.services import AuthService
-from app.models import Base, User, Project, Task, Message
+from app.models import Base, User, Project, Task, Message, Role, Permission, RolePermission, UserRole
 from database import engine, SessionLocal
+
+
+def seed_roles():
+    session = SessionLocal()
+    try:
+        if session.query(Role).count() == 0:
+            roles = [
+                Role(name="admin", description="系统管理员"),
+                Role(name="user", description="普通用户"),
+            ]
+            session.add_all(roles)
+            session.commit()
+            print("Seed roles created successfully!")
+        else:
+            print("Roles already exist, skipping seed.")
+    finally:
+        session.close()
+
+
+def seed_permissions():
+    session = SessionLocal()
+    try:
+        if session.query(Permission).count() == 0:
+            permissions = [
+                Permission(name="project.create", description="创建项目"),
+                Permission(name="project.read", description="查看项目"),
+                Permission(name="project.update", description="更新项目"),
+                Permission(name="project.delete", description="删除项目"),
+                Permission(name="task.create", description="创建任务"),
+                Permission(name="task.read", description="查看任务"),
+                Permission(name="task.update", description="更新任务"),
+                Permission(name="task.delete", description="删除任务"),
+                Permission(name="message.create", description="创建消息"),
+                Permission(name="message.read", description="查看消息"),
+            ]
+            session.add_all(permissions)
+            session.commit()
+            print("Seed permissions created successfully!")
+        else:
+            print("Permissions already exist, skipping seed.")
+    finally:
+        session.close()
+
+
+def seed_role_permissions():
+    session = SessionLocal()
+    try:
+        if session.query(RolePermission).count() == 0:
+            # admin (id=1) 拥有全部权限 (1-10)
+            admin_perms = [RolePermission(role_id=1, permission_id=i) for i in range(1, 11)]
+            # user (id=2) 拥有部分权限
+            user_perms = [
+                RolePermission(role_id=2, permission_id=1),   # project.create
+                RolePermission(role_id=2, permission_id=2),   # project.read
+                RolePermission(role_id=2, permission_id=5),   # task.create
+                RolePermission(role_id=2, permission_id=6),   # task.read
+                RolePermission(role_id=2, permission_id=9),   # message.create
+                RolePermission(role_id=2, permission_id=10),  # message.read
+            ]
+            session.add_all(admin_perms + user_perms)
+            session.commit()
+            print("Seed role_permissions created successfully!")
+        else:
+            print("Role permissions already exist, skipping seed.")
+    finally:
+        session.close()
 
 
 def seed_users():
@@ -28,6 +94,23 @@ def seed_users():
             print("Seed users created successfully!")
         else:
             print("Users already exist, skipping seed.")
+    finally:
+        session.close()
+
+
+def seed_user_roles():
+    session = SessionLocal()
+    try:
+        if session.query(UserRole).count() == 0:
+            user_roles = [
+                UserRole(user_id=1, role_id=1),  # admin -> admin role
+                UserRole(user_id=2, role_id=2),  # user -> user role
+            ]
+            session.add_all(user_roles)
+            session.commit()
+            print("Seed user_roles created successfully!")
+        else:
+            print("User roles already exist, skipping seed.")
     finally:
         session.close()
 
@@ -118,7 +201,11 @@ def seed_messages():
 
 
 def seed():
+    seed_roles()
+    seed_permissions()
+    seed_role_permissions()
     seed_users()
+    seed_user_roles()
     seed_projects()
     seed_tasks()
     seed_messages()
