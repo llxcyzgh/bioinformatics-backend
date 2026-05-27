@@ -4,5 +4,6 @@ from app.http.controllers.project_controller import ProjectController
 from app.http.controllers.task_controller import TaskController
 from app.http.controllers.user_controller import UserController
 from app.http.controllers.template_controller import TemplateController
+from app.http.controllers.chat_controller import ChatController
 
-__all__ = ["AuthController", "MessageController", "ProjectController", "TaskController", "UserController", "TemplateController"]
+__all__ = ["AuthController", "MessageController", "ProjectController", "TaskController", "UserController", "TemplateController", "ChatController"]

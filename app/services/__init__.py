@@ -5,5 +5,6 @@ from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
 from app.services.user_service import UserService
 from app.services.template_service import TemplateService
+from app.services.chat_service import ChatService
 
-__all__ = ["AIService", "AuthService", "MessageService", "ProjectService", "TaskService", "UserService", "TemplateService"]
+__all__ = ["AIService", "AuthService", "MessageService", "ProjectService", "TaskService", "UserService", "TemplateService", "ChatService"]
