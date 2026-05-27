@@ -1,7 +1,7 @@
 import sys
 import uuid
 from app.services import AuthService
-from app.models import Base, User, Project, Task, Message, Role, Permission, RolePermission, UserRole
+from app.models import Base, User, Project, Task, Message, Role, Permission, RolePermission, UserRole, Template
 from database import engine, SessionLocal
 
 
@@ -200,6 +200,42 @@ def seed_messages():
         session.close()
 
 
+def seed_templates():
+    session = SessionLocal()
+    try:
+        if session.query(Template).count() == 0:
+            templates = [
+                Template(
+                    name="FastQC Quality Report",
+                    description="Run FastQC on FASTQ files and generate quality report",
+                    is_public=True,
+                    user_id=1,
+                    scripts="fastqc -t 4 -o ./results/fastqc *.fastq.gz"
+                ),
+                Template(
+                    name="HISAT2 Alignment",
+                    description="Align RNA-Seq reads to reference genome using HISAT2",
+                    is_public=True,
+                    user_id=1,
+                    scripts="hisat2 -x genome_index -1 R1.fastq.gz -2 R2.fastq.gz -S aligned.sam"
+                ),
+                Template(
+                    name="Custom Analysis",
+                    description="Private custom analysis template",
+                    is_public=False,
+                    user_id=2,
+                    scripts=""
+                ),
+            ]
+            session.add_all(templates)
+            session.commit()
+            print("Seed templates created successfully!")
+        else:
+            print("Templates already exist, skipping seed.")
+    finally:
+        session.close()
+
+
 def seed():
     seed_roles()
     seed_permissions()
@@ -209,6 +245,7 @@ def seed():
     seed_projects()
     seed_tasks()
     seed_messages()
+    seed_templates()
 
 
 def migrate():
