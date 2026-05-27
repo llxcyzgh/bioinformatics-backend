@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.http.controllers import AuthController
 from app.http.middleware import Auth
-from app.http.requests import LoginRequest, RegisterRequest
+from app.http.requests import LoginRequest, RegisterRequest, ChangePasswordRequest
 from database import get_db
 from app.models import User
 
@@ -31,7 +31,7 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/logout")
+@router.delete("/logout")
 def logout():
     """Logout endpoint
     POST /api/auth/logout
@@ -46,3 +46,12 @@ def me(current_user: User = Auth):
     Requires authentication
     """
     return AuthController.me(current_user)
+
+
+@router.put("/change-password")
+def change_password(request: ChangePasswordRequest, current_user: User = Auth, db: Session = Depends(get_db)):
+    """Change current user password
+    POST /api/auth/change-password
+    Requires authentication
+    """
+    return AuthController.change_password(current_user, request.old_password, request.new_password, db)

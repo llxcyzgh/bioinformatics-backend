@@ -86,3 +86,12 @@ class AuthService:
             "token": access_token,
             "user": user.to_dict(),
         }, None
+
+    @staticmethod
+    def change_password(user: User, old_password: str, new_password: str, db: Session) -> tuple[Optional[dict], Optional[str]]:
+        if not bcrypt.checkpw(old_password.encode('utf-8'), user.hashed_password.encode('utf-8')):
+            return None, "旧密码不正确"
+
+        user.hashed_password = AuthService.hash_password(new_password)
+        db.commit()
+        return {"message": "密码修改成功"}, None

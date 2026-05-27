@@ -13,3 +13,9 @@ class RegisterRequest(BaseModel):
     """Register request validation"""
     email: EmailStr
     password: str = Field(min_length=6)
+
+
+class ChangePasswordRequest(BaseModel):
+    """Change password request validation"""
+    old_password: str = Field(min_length=6)
+    new_password: str = Field(min_length=6)

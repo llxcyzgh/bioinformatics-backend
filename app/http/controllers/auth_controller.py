@@ -52,3 +52,18 @@ class AuthController:
     def me(current_user) -> dict:
         """Get current authenticated user"""
         return current_user.to_dict()
+
+    @staticmethod
+    def change_password(current_user, old_password: str, new_password: str, db: Session) -> JSONResponse:
+        result, error = AuthService.change_password(current_user, old_password, new_password, db)
+
+        if error:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": error}
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=result
+        )
