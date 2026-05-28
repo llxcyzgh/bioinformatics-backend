@@ -37,6 +37,8 @@ class ChatController:
                     except ValueError as e:
                         logger.warning(f"[ChatController] 图片上传失败: {e}")
 
+            image_filenames = [img.filename for img in images if img.filename] if images else None
+
             result = ChatService.chat(
                 db=db,
                 task_id=task_id,
@@ -45,6 +47,7 @@ class ChatController:
                 msg_type=msg_type,
                 user_id=user_id,
                 image_ids=all_image_ids if all_image_ids else None,
+                image_filenames=image_filenames,
             )
             return JSONResponse(status_code=status.HTTP_200_OK, content=result)
         except ValueError as e:

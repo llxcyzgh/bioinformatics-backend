@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class ChatService:
 
     @staticmethod
-    def _get_or_create_task(db: Session, task_id: Optional[int], project_id: int, user_id: int) -> Task:
+    def _get_or_create_task(db: Session, task_id: Optional[int], project_id: int, user_id: int, task_name: str = "") -> Task:
         if task_id:
             task = Task.find(db, task_id)
             if not task:
@@ -26,10 +26,10 @@ class ChatService:
                 raise ValueError("Forbidden")
             return task
 
-        task_count = Task.where(db, project_id=project_id, user_id=user_id).count()
+        name = task_name[:50] if task_name else "New Chat"
         task = Task(
             uuid=str(uuid.uuid4()),
-            name=f"Chat {task_count + 1}",
+            name=name,
             project_id=project_id,
             user_id=user_id,
         )
@@ -138,8 +138,12 @@ class ChatService:
         msg_type: str,
         user_id: int,
         image_ids: list[int] | None = None,
+        image_filenames: list[str] | None = None,
     ) -> dict:
-        task = ChatService._get_or_create_task(db, task_id, project_id, user_id)
+        # Build task name from content or image filenames
+        task_name = content.strip() if content.strip() else (image_filenames[0] if image_filenames else "")
+
+        task = ChatService._get_or_create_task(db, task_id, project_id, user_id, task_name)
 
         # Build user message data (image references)
         user_data = ""
