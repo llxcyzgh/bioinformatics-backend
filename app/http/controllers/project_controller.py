@@ -13,10 +13,10 @@ class ProjectController:
     """
 
     @staticmethod
-    def index(db: Session, user_id: int) -> List[dict]:
+    def index(db: Session, user_id: int) -> dict:
         """Get all projects for the current user"""
         projects = ProjectService.get_all_projects(db, user_id)
-        return [project.to_dict() for project in projects]
+        return {"data": [project.to_dict() for project in projects]}
 
     @staticmethod
     def show(project_id: int, db: Session, user_id: int) -> JSONResponse:

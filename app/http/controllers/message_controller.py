@@ -11,13 +11,13 @@ class MessageController:
     """Message controller for conversation endpoints"""
 
     @staticmethod
-    def index(task_id: int, db: Session, user_id: int) -> List[dict]:
+    def index(task_id: int, db: Session, user_id: int) -> dict:
         """Get all messages for a task"""
         try:
             messages = MessageService.get_messages_by_task(db, task_id, user_id)
-            return [message.to_dict() for message in messages]
+            return {"data": [message.to_dict() for message in messages]}
         except ValueError:
-            return []
+            return {"data": []}
 
     @staticmethod
     def show(message_id: int, db: Session, user_id: int) -> JSONResponse:

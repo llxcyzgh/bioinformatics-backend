@@ -13,10 +13,10 @@ class UserController:
     """
 
     @staticmethod
-    def index(db: Session) -> List[dict]:
+    def index(db: Session) -> dict:
         """Get all users"""
         users = UserService.get_all_users(db)
-        return [user.to_dict() for user in users]
+        return {"data": [user.to_dict() for user in users]}
 
     @staticmethod
     def show(user_id: int, db: Session) -> JSONResponse:

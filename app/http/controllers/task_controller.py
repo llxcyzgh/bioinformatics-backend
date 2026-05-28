@@ -13,10 +13,10 @@ class TaskController:
     """
 
     @staticmethod
-    def index(db: Session, user_id: int, project_id: int = 0) -> List[dict]:
+    def index(db: Session, user_id: int, project_id: int = 0) -> dict:
         """Get all tasks for the current user"""
         tasks = TaskService.get_all_tasks(db, user_id, project_id=project_id)
-        return [task.to_dict() for task in tasks]
+        return {"data": [task.to_dict() for task in tasks]}
 
     @staticmethod
     def show(task_id: int, db: Session, user_id: int) -> JSONResponse:

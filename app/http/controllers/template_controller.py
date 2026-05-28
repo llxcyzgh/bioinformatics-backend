@@ -10,9 +10,9 @@ from app.services import TemplateService
 class TemplateController:
 
     @staticmethod
-    def index(db: Session, user_id: int) -> List[dict]:
+    def index(db: Session, user_id: int) -> dict:
         templates = TemplateService.get_all_templates(db, user_id)
-        return [t.to_dict() for t in templates]
+        return {"data": [t.to_dict() for t in templates]}
 
     @staticmethod
     def show(template_id: int, db: Session, user_id: int) -> JSONResponse:
