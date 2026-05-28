@@ -15,7 +15,7 @@ class TaskService:
         filters = {"user_id": user_id}
         if project_id:
             filters["project_id"] = project_id
-        return Task.where(db, **filters).all()
+        return Task.where(db, **filters).order_by(Task.id.desc()).all()
 
     @staticmethod
     def get_task_by_id(db: Session, task_id: int, user_id: int) -> Optional[Task]:

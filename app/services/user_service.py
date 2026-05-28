@@ -11,7 +11,7 @@ class UserService:
     @staticmethod
     def get_all_users(db: Session) -> List[User]:
         """Get all users"""
-        return db.query(User).all()
+        return db.query(User).order_by(User.id.desc()).all()
 
     @staticmethod
     def get_user_by_id(db: Session, user_id: int) -> Optional[User]:

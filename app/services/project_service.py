@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models import Project
+from app.models import Project, Task
 
 
 class ProjectService:
@@ -11,7 +11,7 @@ class ProjectService:
     @staticmethod
     def get_all_projects(db: Session, user_id: int) -> List[Project]:
         """Get all projects for a specific user"""
-        return Project.where(db, user_id=user_id)
+        return Project.where(db, user_id=user_id).order_by(Project.id.desc())
 
     @staticmethod
     def get_project_by_id(db: Session, project_id: int, user_id: int) -> Optional[Project]:
@@ -48,7 +48,13 @@ class ProjectService:
 
     @staticmethod
     def delete_project(db: Session, project: Project) -> None:
-        """Soft delete a project"""
+        """Soft delete a project, only if it has no tasks"""
+        task_count = db.query(Task).filter(
+            Task.project_id == project.id,
+            Task.deleted_at == 0,
+        ).count()
+        if task_count > 0:
+            raise ValueError("该项目下存在任务，无法删除")
         project.delete(db)
 
     @staticmethod

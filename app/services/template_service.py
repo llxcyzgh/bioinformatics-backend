@@ -10,12 +10,12 @@ class TemplateService:
     @staticmethod
     def get_all_templates(db: Session, user_id: int) -> List[Template]:
         """Get user's own templates and all public templates"""
-        own = Template.where(db, user_id=user_id).all()
+        own = Template.where(db, user_id=user_id).order_by(Template.id.desc()).all()
         public = db.query(Template).filter(
             Template.is_public == True,
             Template.deleted_at == 0,
             Template.user_id != user_id,
-        ).all()
+        ).order_by(Template.id.desc()).all()
         return own + public
 
     @staticmethod
