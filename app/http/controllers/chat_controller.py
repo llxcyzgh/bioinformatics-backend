@@ -1,4 +1,3 @@
-import json
 import logging
 
 from fastapi import UploadFile
@@ -7,7 +6,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.services import ChatService
-from app.services.upload_service import UploadService
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +24,6 @@ class ChatController:
         images: list[UploadFile] | None = None,
     ) -> JSONResponse:
         try:
-            # Handle inline image uploads
-            all_image_ids = list(image_ids) if image_ids else []
-
-            if images:
-                for img in images:
-                    try:
-                        record = UploadService.create(img, user_id, db, task_id or 0)
-                        all_image_ids.append(record.id)
-                    except ValueError as e:
-                        logger.warning(f"[ChatController] 图片上传失败: {e}")
-
             image_filenames = [img.filename for img in images if img.filename] if images else None
 
             result = ChatService.chat(
@@ -46,7 +33,8 @@ class ChatController:
                 content=content,
                 msg_type=msg_type,
                 user_id=user_id,
-                image_ids=all_image_ids if all_image_ids else None,
+                image_ids=image_ids,
+                images=images,
                 image_filenames=image_filenames,
             )
             return JSONResponse(status_code=status.HTTP_200_OK, content=result)

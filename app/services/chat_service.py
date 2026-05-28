@@ -3,12 +3,14 @@ import logging
 import uuid
 from typing import Optional
 
+from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from app.models import Task, Message
 from app.services.ai_service import AIService
 from app.services.parser_service import ParserService
 from app.services.planner_service import PlannerService
+from app.services.upload_service import UploadService
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
 
 logger = logging.getLogger(__name__)
@@ -139,16 +141,27 @@ class ChatService:
         user_id: int,
         image_ids: list[int] | None = None,
         image_filenames: list[str] | None = None,
+        images: list[UploadFile] | None = None,
     ) -> dict:
         # Build task name from content or image filenames
         task_name = content.strip() if content.strip() else (image_filenames[0] if image_filenames else "")
 
         task = ChatService._get_or_create_task(db, task_id, project_id, user_id, task_name)
 
+        # Upload inline images (after task exists so task_id is correct)
+        all_image_ids = list(image_ids) if image_ids else []
+        if images:
+            for img in images:
+                try:
+                    record = UploadService.create(img, user_id, db, task.id)
+                    all_image_ids.append(record.id)
+                except ValueError as e:
+                    logger.warning(f"[ChatService] 图片上传失败: {e}")
+
         # Build user message data (image references)
         user_data = ""
-        if image_ids:
-            user_data = json.dumps({"image_ids": image_ids}, ensure_ascii=False)
+        if all_image_ids:
+            user_data = json.dumps({"image_ids": all_image_ids}, ensure_ascii=False)
 
         user_message = Message(
             task_id=task.id,
