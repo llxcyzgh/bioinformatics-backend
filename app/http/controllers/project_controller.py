@@ -72,7 +72,13 @@ class ProjectController:
                 content={"detail": "Project not found"}
             )
 
-        ProjectService.delete_project(db, project)
+        try:
+            ProjectService.delete_project(db, project)
+        except ValueError as e:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={"detail": str(e)}
+            )
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={"message": "Project deleted successfully"}
