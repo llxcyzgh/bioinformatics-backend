@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.http.controllers import ProjectController
 from app.http.middleware import Auth
-from app.http.requests import CreateProjectRequest, UpdateProjectRequest
+from app.http.requests import CreateProjectRequest, UpdateProjectRequest, RenameProjectRequest
 from app.models import User
 from database import get_db
 
@@ -73,3 +73,16 @@ def destroy(
     DELETE /api/projects/{id}
     """
     return ProjectController.destroy(project_id, db, current_user.id)
+
+
+@router.patch("/{project_id}/rename", response_class=JSONResponse)
+def rename(
+    project_id: int,
+    request: RenameProjectRequest,
+    current_user: User = Auth,
+    db: Session = Depends(get_db)
+):
+    """Rename a project
+    PATCH /api/projects/{id}/rename
+    """
+    return ProjectController.rename(project_id, request.name, db, current_user.id)

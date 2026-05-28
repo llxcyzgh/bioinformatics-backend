@@ -50,3 +50,18 @@ class ProjectService:
     def delete_project(db: Session, project: Project) -> None:
         """Soft delete a project"""
         project.delete(db)
+
+    @staticmethod
+    def rename_project(db: Session, project: Project, name: str) -> Project:
+        """Rename a project, enforcing unique name"""
+        existing = db.query(Project).filter(
+            Project.name == name,
+            Project.id != project.id,
+            Project.deleted_at == 0,
+        ).first()
+        if existing:
+            raise ValueError("Project name already exists")
+        project.name = name
+        db.commit()
+        db.refresh(project)
+        return project

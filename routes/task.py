@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.http.controllers import MessageController, TaskController
 from app.http.middleware import Auth
-from app.http.requests import CreateMessageRequest, CreateTaskRequest, UpdateTaskRequest
+from app.http.requests import CreateMessageRequest, CreateTaskRequest, UpdateTaskRequest, RenameTaskRequest
 from app.models import User
 from database import get_db
 
@@ -76,6 +76,19 @@ def destroy(
     DELETE /api/tasks/{id}
     """
     return TaskController.destroy(task_id, db, current_user.id)
+
+
+@router.patch("/{task_id}/rename", response_class=JSONResponse)
+def rename(
+    task_id: int,
+    request: RenameTaskRequest,
+    current_user: User = Auth,
+    db: Session = Depends(get_db)
+):
+    """Rename a task
+    PATCH /api/tasks/{id}/rename
+    """
+    return TaskController.rename(task_id, request.name, db, current_user.id)
 
 
 # ---------------------------------------------------------------------------

@@ -59,3 +59,11 @@ class TaskService:
     def delete_task(db: Session, task: Task) -> None:
         """Soft delete a task"""
         task.delete(db)
+
+    @staticmethod
+    def rename_task(db: Session, task: Task, name: str) -> Task:
+        """Rename a task"""
+        task.name = name
+        db.commit()
+        db.refresh(task)
+        return task

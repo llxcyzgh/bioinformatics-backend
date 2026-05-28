@@ -83,3 +83,18 @@ class TaskController:
             status_code=status.HTTP_200_OK,
             content={"message": "Task deleted successfully"}
         )
+
+    @staticmethod
+    def rename(task_id: int, name: str, db: Session, user_id: int) -> JSONResponse:
+        """Rename a task"""
+        task = TaskService.get_task_by_id(db, task_id, user_id)
+        if not task:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"detail": "Task not found"}
+            )
+        task = TaskService.rename_task(db, task, name)
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=task.to_dict()
+        )

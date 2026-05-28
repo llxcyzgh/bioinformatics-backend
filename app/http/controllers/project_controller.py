@@ -77,3 +77,24 @@ class ProjectController:
             status_code=status.HTTP_200_OK,
             content={"message": "Project deleted successfully"}
         )
+
+    @staticmethod
+    def rename(project_id: int, name: str, db: Session, user_id: int) -> JSONResponse:
+        """Rename a project"""
+        project = ProjectService.get_project_by_id(db, project_id, user_id)
+        if not project:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"detail": "Project not found"}
+            )
+        try:
+            project = ProjectService.rename_project(db, project, name)
+        except ValueError as e:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={"detail": str(e)}
+            )
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=project.to_dict()
+        )

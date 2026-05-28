@@ -10,3 +10,8 @@ class CreateTaskRequest(BaseModel):
 class UpdateTaskRequest(BaseModel):
     """Update task request validation"""
     name: str | None = Field(None, min_length=1, max_length=255)
+
+
+class RenameTaskRequest(BaseModel):
+    """Rename task request validation"""
+    name: str = Field(min_length=1, max_length=255)
