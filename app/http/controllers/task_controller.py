@@ -13,9 +13,9 @@ class TaskController:
     """
 
     @staticmethod
-    def index(db: Session, user_id: int) -> List[dict]:
+    def index(db: Session, user_id: int, project_id: int = 0) -> List[dict]:
         """Get all tasks for the current user"""
-        tasks = TaskService.get_all_tasks(db, user_id)
+        tasks = TaskService.get_all_tasks(db, user_id, project_id=project_id)
         return [task.to_dict() for task in tasks]
 
     @staticmethod

@@ -12,11 +12,15 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
 @router.get("/", response_class=JSONResponse)
-def index(current_user: User = Auth, db: Session = Depends(get_db)):
+def index(
+    project_id: int = 0,
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
     """Get all tasks for the current user
-    GET /api/tasks
+    GET /api/tasks?project_id=1
     """
-    return TaskController.index(db, current_user.id)
+    return TaskController.index(db, current_user.id, project_id=project_id)
 
 
 @router.get("/{task_id}", response_class=JSONResponse)
