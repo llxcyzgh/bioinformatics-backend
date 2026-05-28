@@ -15,7 +15,7 @@ class Project(Model):
     deleted_at = Column(Integer, default=0, nullable=False)
 
     # 业务字段
-    name = Column(String, nullable=False, default='')
+    name = Column(String, nullable=False, default='', unique=True)
     description = Column(String, nullable=True, default='')
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, default=0)
 
