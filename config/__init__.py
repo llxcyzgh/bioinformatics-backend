@@ -7,6 +7,7 @@ from config.llm import (
     DASHSCOPE_MODEL_NAME,
     LLM_PARSER_TIMEOUT,
 )
+from config.upload import UPLOAD_DIR, MAX_UPLOAD_SIZE_MB
 
 __all__ = [
     "APP_NAME",
@@ -21,4 +22,6 @@ __all__ = [
     "DASHSCOPE_API_BASE",
     "DASHSCOPE_MODEL_NAME",
     "LLM_PARSER_TIMEOUT",
+    "UPLOAD_DIR",
+    "MAX_UPLOAD_SIZE_MB",
 ]

@@ -1,7 +1,7 @@
 import sys
 import uuid
 from app.services import AuthService
-from app.models import Base, User, Project, Task, Message, Role, Permission, RolePermission, UserRole, Template
+from app.models import Base, User, Project, Task, Message, Role, Permission, RolePermission, UserRole, Template, UploadedFile
 from database import engine, SessionLocal
 
 
