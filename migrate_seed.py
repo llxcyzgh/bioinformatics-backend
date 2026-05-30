@@ -2,7 +2,7 @@ import json
 import sys
 import uuid
 from app.services import AuthService
-from app.models import Base, User, Project, Task, Message, Role, Permission, RolePermission, UserRole, Template, UploadedFile
+from app.models import Base, User, Project, Task, Message, Role, Permission, RolePermission, UserRole, Template, UploadedFile, ScriptFolder, Script
 from database import engine, SessionLocal
 
 
@@ -247,6 +247,8 @@ def seed():
     seed_tasks()
     seed_messages()
     seed_templates()
+    seed_script_folders()
+    seed_scripts()
 
 
 def migrate():
@@ -335,6 +337,108 @@ def migrate_fresh():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     print("Database tables recreated successfully!")
+
+
+def seed_script_folders():
+    session = SessionLocal()
+    try:
+        if session.query(ScriptFolder).count() == 0:
+            folders = [
+                ScriptFolder(name="数据预处理", parent_id=0, sort_order=1),
+                ScriptFolder(name="质量控制", parent_id=0, sort_order=2),
+                ScriptFolder(name="核心分析", parent_id=0, sort_order=3),
+                ScriptFolder(name="多样性分析", parent_id=0, sort_order=4),
+                ScriptFolder(name="统计检验", parent_id=0, sort_order=5),
+                ScriptFolder(name="可视化", parent_id=0, sort_order=6),
+                ScriptFolder(name="排序分析", parent_id=0, sort_order=7),
+                ScriptFolder(name="功能预测", parent_id=0, sort_order=8),
+            ]
+            session.add_all(folders)
+            session.commit()
+            print("Seed script_folders created successfully!")
+        else:
+            print("Script folders already exist, skipping seed.")
+    finally:
+        session.close()
+
+
+def seed_scripts():
+    from pkg.amplicon.amplicon_tools import get_all_tools, DATA_TYPE_NAMES
+    session = SessionLocal()
+    try:
+        if session.query(Script).count() == 0:
+            tools = get_all_tools()
+            category_folder = {
+                "数据预处理": 1, "质量控制": 2, "核心分析": 3,
+                "多样性分析": 4, "统计检验": 5, "可视化": 6,
+                "排序分析": 7, "功能预测": 8,
+            }
+            tool_file_map = {
+                "amp-import-fasta": "amplicon/01_import_fasta.sh",
+                "amp-cutadapt": "amplicon/02_cutadapt.sh",
+                "amp-flash": "amplicon/03_flash.sh",
+                "amp-frags-qc": "amplicon/04_qc.sh",
+                "amp-dada2": "amplicon/05_dada2.sh",
+                "amp-taxonomy": "amplicon/06_taxonomy.sh",
+                "amp-phylogeny": "amplicon/07_phylogeny.sh",
+                "amp-feature-tables": "amplicon/08_feature_tables.sh",
+                "amp-table-stats": "amplicon/09_table_stats.sh",
+                "amp-alpha-data": "amplicon/10_alpha_data.R",
+                "amp-beta-data": "amplicon/11_beta_data.R",
+                "amp-upgma": "amplicon/12_upgma.R",
+                "amp-alpha-div": "amplicon/13_alpha_div.R",
+                "amp-alpha-rarefaction": "amplicon/14_alpha_rarefaction.R",
+                "amp-beta-div": "amplicon/15_beta_div.R",
+                "amp-catecomp": "amplicon/16_catecomp.R",
+                "amp-lefse": "amplicon/17_lefse.R",
+                "amp-metastat": "amplicon/18_metastat.R",
+                "amp-randomforest": "amplicon/19_randomforest.R",
+                "amp-simper": "amplicon/20_simper.R",
+                "amp-ttest": "amplicon/21_ttest.R",
+                "amp-top-species": "amplicon/22_top_species.R",
+                "amp-genus-tree": "amplicon/23_genus_tree.R",
+                "amp-krona": "amplicon/24_krona.R",
+                "amp-network": "amplicon/25_network.R",
+                "amp-network3d": "amplicon/26_network3d.R",
+                "amp-otutree": "amplicon/27_otutree.R",
+                "amp-taxasummary": "amplicon/28_taxa_heatmap.R",
+                "amp-taxasummary-group": "amplicon/29_taxa_heatmap_group.R",
+                "amp-ternary": "amplicon/30_ternary.R",
+                "amp-venn": "amplicon/31_venn.R",
+                "amp-pca": "amplicon/32_pca.R",
+                "amp-pcoa": "amplicon/33_pcoa.R",
+                "amp-nmds": "amplicon/34_nmds.R",
+                "amp-dca": "amplicon/35_dca.R",
+                "amp-funpre": "amplicon/36_picrust2.sh",
+            }
+            scripts = []
+            for tool in tools:
+                file_path = tool_file_map.get(tool.id, "")
+                folder_id = category_folder.get(tool.category, 1)
+                scripts.append(Script(
+                    name=tool.name,
+                    description=f"{tool.name} — 输入: {', '.join(DATA_TYPE_NAMES.get(i, i) for i in tool.inputs)}; 输出: {', '.join(DATA_TYPE_NAMES.get(o, o) for o in tool.outputs)}",
+                    folder_id=folder_id,
+                    tool_id=tool.id,
+                    category=tool.category,
+                    file_path=file_path,
+                    inputs=json.dumps(tool.inputs),
+                    outputs=json.dumps(tool.outputs),
+                    runtime=5 + len(tool.outputs) * 3,
+                    cost=round(1.0 + len(tool.outputs) * 0.8, 1),
+                    weight=len(tool.outputs),
+                    verified=1,
+                    is_active=1,
+                    uploaded_by=1,
+                    verified_by=1,
+                ))
+            session.add_all(scripts)
+            session.commit()
+            print(f"Seed scripts created successfully! ({len(scripts)} scripts)")
+        else:
+            print("Scripts already exist, skipping seed.")
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from config.upload import UPLOAD_DIR
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
 from pkg.amplicon.amplicon_tools import resolve_root_inputs
 from pkg.amplicon.code_templates import generate_workflow_script
+from app.services.script_service import ScriptService
 
 logger = logging.getLogger(__name__)
 
@@ -343,8 +344,18 @@ class ChatService:
                 "required": True,
             })
 
-        # 生成执行代码
-        generated_code = generate_workflow_script(tool_chain)
+        # 生成执行代码：优先从 Script 表读取真实脚本，回退到模板
+        script_parts = []
+        for tid in tool_ids:
+            script_record = ScriptService.get_by_tool_id(db, tid)
+            if script_record and script_record.file_path:
+                content = ScriptService.read_script_content(script_record.file_path)
+                if content:
+                    script_parts.append(f"# ===== {script_record.name} ({tid}) =====\n{content}")
+        if script_parts:
+            generated_code = "\n\n".join(script_parts)
+        else:
+            generated_code = generate_workflow_script(tool_chain)
 
         # 保存用户消息（记录选择）
         user_message = Message(

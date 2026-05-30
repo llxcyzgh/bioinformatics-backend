@@ -6,5 +6,7 @@ from app.http.controllers.user_controller import UserController
 from app.http.controllers.template_controller import TemplateController
 from app.http.controllers.chat_controller import ChatController
 from app.http.controllers.upload_controller import UploadController
+from app.http.controllers.script_folder_controller import ScriptFolderController
+from app.http.controllers.script_controller import ScriptController
 
-__all__ = ["AuthController", "MessageController", "ProjectController", "TaskController", "UserController", "TemplateController", "ChatController", "UploadController"]
+__all__ = ["AuthController", "MessageController", "ProjectController", "TaskController", "UserController", "TemplateController", "ChatController", "UploadController", "ScriptFolderController", "ScriptController"]
