@@ -18,8 +18,8 @@ class UploadController:
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)})
 
     @staticmethod
-    def list_files(user_id: int, db, category: str = None, task_id: int = None) -> JSONResponse:
-        records = UploadService.list_by_user(db, user_id, category, task_id)
+    def list_files(user_id: int, db, category: str = None, task_id: int = None, project_id: int = None, search: str = None) -> JSONResponse:
+        records = UploadService.list_by_user(db, user_id, category, task_id, project_id, search)
         return JSONResponse(status_code=status.HTTP_200_OK, content=[r.to_dict() for r in records])
 
     @staticmethod

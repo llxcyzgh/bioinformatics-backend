@@ -25,10 +25,12 @@ def upload(
 def list_files(
     category: Optional[str] = None,
     task_id: Optional[int] = None,
+    project_id: Optional[int] = None,
+    search: Optional[str] = None,
     current_user: User = Auth,
     db: Session = Depends(get_db),
 ):
-    return UploadController.list_files(current_user.id, db, category, task_id)
+    return UploadController.list_files(current_user.id, db, category, task_id, project_id, search)
 
 
 @router.get("/{file_id}/download")

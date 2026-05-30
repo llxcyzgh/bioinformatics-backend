@@ -90,10 +90,15 @@ class UploadService:
         return record
 
     @staticmethod
-    def list_by_user(db: Session, user_id: int, category: Optional[str] = None, task_id: Optional[int] = None) -> list:
-        query = UploadedFile.where(db, user_id=user_id)
+    def list_by_user(db: Session, user_id: int, category: Optional[str] = None, task_id: Optional[int] = None, project_id: Optional[int] = None, search: Optional[str] = None) -> list:
+        from app.models import Task
+        query = db.query(UploadedFile).filter(UploadedFile.user_id == user_id, UploadedFile.deleted_at == 0)
         if category:
             query = query.filter(UploadedFile.category == category)
         if task_id is not None:
             query = query.filter(UploadedFile.task_id == task_id)
+        if project_id is not None:
+            query = query.join(Task, UploadedFile.task_id == Task.id).filter(Task.project_id == project_id)
+        if search:
+            query = query.filter(UploadedFile.original_name.ilike(f"%{search}%"))
         return query.order_by(UploadedFile.id.desc()).all()
