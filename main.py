@@ -3,6 +3,13 @@ from dotenv import load_dotenv
 # Load environment variables first
 load_dotenv()
 
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from config import APP_NAME, APP_VERSION

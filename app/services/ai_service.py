@@ -48,6 +48,11 @@ class AIService:
     @staticmethod
     def _call_llm(messages: List[dict]) -> dict:
         """Make HTTP call to DashScope compatible-mode API."""
+        import logging
+        logger = logging.getLogger(__name__)
+        log_msgs = [{"role": m["role"], "content": (m.get("content", "")[:200] + "..." if isinstance(m.get("content"), str) and len(m.get("content", "")) > 200 else m.get("content"))} for m in messages]
+        logger.info(f"[AIService] LLM请求(model={DASHSCOPE_MODEL_NAME}): {json.dumps(log_msgs, ensure_ascii=False)}")
+
         response = httpx.post(
             f"{DASHSCOPE_API_BASE}/chat/completions",
             headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
@@ -60,6 +65,8 @@ class AIService:
         response.raise_for_status()
         result = response.json()
         ai_content = result["choices"][0]["message"]["content"]
+        usage = result.get("usage", {})
+        logger.info(f"[AIService] LLM输出(usage: prompt={usage.get('prompt_tokens','?')}, completion={usage.get('completion_tokens','?')}): {ai_content[:500]}")
         return json.loads(ai_content)
 
     @staticmethod

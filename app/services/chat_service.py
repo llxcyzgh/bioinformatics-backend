@@ -1,5 +1,7 @@
 import json
 import logging
+import base64
+import os
 import uuid
 from typing import Optional
 
@@ -11,6 +13,8 @@ from app.services.ai_service import AIService
 from app.services.parser_service import ParserService
 from app.services.planner_service import PlannerService
 from app.services.upload_service import UploadService
+from config.llm import DASHSCOPE_API_BASE, DASHSCOPE_API_KEY, DASHSCOPE_MODEL_NAME, LLM_PARSER_TIMEOUT
+from config.upload import UPLOAD_DIR
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
 
 logger = logging.getLogger(__name__)
@@ -52,6 +56,64 @@ class ChatService:
             {"role": msg.role, "content": msg.content}
             for msg in history
         ]
+
+    @staticmethod
+    def _analyze_images(image_paths: list[str]) -> str:
+        """用多模态 LLM 解析图片，返回描述文本。"""
+        if not DASHSCOPE_API_KEY or not image_paths:
+            return ""
+
+        import httpx
+
+        content_parts = [
+            {
+                "type": "text",
+                "text": "请仔细分析这些图片，描述其中与生物信息分析相关的所有信息，包括：数据类型、样本信息、分析结果、图表内容等。用简洁的中文描述，不超过200字。",
+            }
+        ]
+
+        for path in image_paths:
+            full_path = os.path.join(UPLOAD_DIR, path)
+            if not os.path.exists(full_path):
+                logger.warning(f"[ChatService] 图片文件不存在: {full_path}")
+                continue
+            ext = os.path.splitext(full_path)[1].lower()
+            mime_map = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+            mime = mime_map.get(ext, "image/png")
+            with open(full_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            content_parts.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{b64}"},
+            })
+            logger.info(f"[ChatService] 已加载图片: {path} ({mime}, {len(b64)} bytes base64)")
+
+        if len(content_parts) == 1:
+            logger.warning("[ChatService] 没有可用的图片文件")
+            return ""
+
+        try:
+            vl_model = os.getenv("DASHSCOPE_VL_MODEL", "qwen-vl-plus")
+            logger.info(f"[ChatService] 调用视觉模型 {vl_model} 解析图片...")
+            response = httpx.post(
+                f"{DASHSCOPE_API_BASE}/chat/completions",
+                headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
+                json={
+                    "model": vl_model,
+                    "messages": [{"role": "user", "content": content_parts}],
+                    "temperature": 0.1,
+                },
+                timeout=LLM_PARSER_TIMEOUT,
+            )
+            response.raise_for_status()
+            result = response.json()
+            description = result["choices"][0]["message"]["content"]
+            usage = result.get("usage", {})
+            logger.info(f"[ChatService] 图片解析成功(usage: prompt={usage.get('prompt_tokens','?')}, completion={usage.get('completion_tokens','?')}): {description}")
+            return description
+        except Exception as e:
+            logger.warning(f"[ChatService] 图片解析失败: {type(e).__name__}: {e}")
+            return ""
 
     @staticmethod
     def _format_data_type_names(type_ids: list[str]) -> str:
@@ -177,6 +239,17 @@ class ChatService:
         if all_image_urls:
             user_data = json.dumps({"images": all_image_urls}, ensure_ascii=False)
 
+        # Analyze images with multimodal LLM and merge with text
+        combined_content = content
+        if all_image_urls:
+            # URLs are "/uploads/{user_id}/{file}", extract the relative path after /uploads/
+            image_paths = [url.removeprefix("/uploads/") for url in all_image_urls]
+            logger.info(f"[ChatService] 待解析图片路径: {image_paths}")
+            image_description = ChatService._analyze_images(image_paths)
+            if image_description:
+                combined_content = f"{content}\n\n[用户上传的图片内容分析]: {image_description}" if content.strip() else f"[用户上传的图片内容分析]: {image_description}"
+                logger.info(f"[ChatService] 合并后的输入: {combined_content}")
+
         user_message = Message(
             task_id=task.id,
             role="user",
@@ -194,13 +267,13 @@ class ChatService:
         )
         history_dicts = ChatService._build_history_dicts(history)
 
-        # Parse user input
+        # Parse user input (use combined content with image descriptions)
         try:
-            parser_result = ParserService.parse(content, history_dicts)
+            parser_result = ParserService.parse(combined_content, history_dicts)
             logger.info(f"[ChatService] 解析结果: {parser_result}")
 
             # Decision routing
-            ai_response = ChatService._route_decision(parser_result, content, history_dicts)
+            ai_response = ChatService._route_decision(parser_result, combined_content, history_dicts)
         except Exception as e:
             logger.error(f"[ChatService] 解析/规划异常，回退到通用 AI: {e}")
             ai_response = AIService.generate_response(task.id, user_message, history)

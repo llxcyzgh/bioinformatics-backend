@@ -202,6 +202,25 @@ def _call_llm(messages: list[dict], temperature: float = 0.1, json_mode: bool = 
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
 
+    # Log input (truncate long content for readability)
+    log_messages = []
+    for m in messages:
+        content = m.get("content", "")
+        if isinstance(content, str) and len(content) > 200:
+            content = content[:200] + f"...({len(content)} chars)"
+        elif isinstance(content, list):
+            parts = []
+            for part in content:
+                if part.get("type") == "text":
+                    t = part.get("text", "")
+                    parts.append(f"[text] {t[:200]}{'...' if len(t) > 200 else ''}")
+                elif part.get("type") == "image_url":
+                    parts.append("[image_url]")
+            content = parts
+        log_messages.append({"role": m["role"], "content": content})
+    logger.info(f"[LLM] 请求模型={DASHSCOPE_MODEL_NAME}, temperature={temperature}, json_mode={json_mode}")
+    logger.info(f"[LLM] 输入消息: {json.dumps(log_messages, ensure_ascii=False)}")
+
     response = httpx.post(
         f"{DASHSCOPE_API_BASE}/chat/completions",
         headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
@@ -210,7 +229,10 @@ def _call_llm(messages: list[dict], temperature: float = 0.1, json_mode: bool = 
     )
     response.raise_for_status()
     result = response.json()
-    return result["choices"][0]["message"]["content"]
+    raw = result["choices"][0]["message"]["content"]
+    usage = result.get("usage", {})
+    logger.info(f"[LLM] 输出(usage: prompt={usage.get('prompt_tokens','?')}, completion={usage.get('completion_tokens','?')}): {raw[:500]}{'...' if len(raw) > 500 else ''}")
+    return raw
 
 
 def parse_natural_language(user_input: str, conversation_history: list[dict] | None = None) -> dict:
