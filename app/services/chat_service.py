@@ -16,6 +16,8 @@ from app.services.upload_service import UploadService
 from config.llm import DASHSCOPE_API_BASE, DASHSCOPE_API_KEY, DASHSCOPE_MODEL_NAME, LLM_PARSER_TIMEOUT
 from config.upload import UPLOAD_DIR
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
+from pkg.amplicon.amplicon_tools import resolve_root_inputs
+from pkg.amplicon.code_templates import generate_workflow_script
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +294,82 @@ class ChatService:
             result_content=ai_response.get("result_content", ""),
             result_files=ai_response.get("result_files", ""),
             next_steps=ai_response.get("next_steps", ""),
+        )
+        ai_message.save(db)
+
+        return {
+            "task": task.to_dict(),
+            "message": ai_message.to_dict(),
+        }
+
+    @staticmethod
+    def confirm_path(
+        db: Session,
+        task_uuid: str,
+        project_id: int,
+        candidate_id: str,
+        candidate_data: str,
+        user_id: int,
+    ) -> dict:
+        """用户确认选择分析路径 → 生成代码 + 返回必需文件"""
+        task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
+        logger.info(f"[ChatService] 路径确认: task={task.id}, candidate={candidate_id}")
+
+        # 解析候选方案
+        try:
+            candidate = json.loads(candidate_data)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise ValueError(f"Invalid candidate data: {e}")
+
+        tool_chain = candidate.get("tool_chain", [])
+        if not tool_chain:
+            raise ValueError("tool_chain is empty")
+
+        tool_ids = [t["id"] for t in tool_chain if isinstance(t, dict) and "id" in t]
+        explanation = candidate.get("explanation", "")
+
+        # 确定必需文件
+        required_files = resolve_root_inputs(tool_ids)
+        logger.info(f"[ChatService] 必需文件: {[f['typeId'] for f in required_files]}")
+
+        # 如果从原始序列数据开始，追加 metadata 文件需求
+        first_inputs = required_files[0]["typeId"] if required_files else ""
+        if first_inputs in ("FASTQ_PAIR", "FASTA_SEQ", "FASTQ_TRIMMED", "FASTQ_MERGED"):
+            required_files.append({
+                "typeId": "METADATA",
+                "label": "样本信息表(metadata)",
+                "description": "包含样本分组信息的元数据CSV文件",
+                "extensions": [".csv", ".tsv"],
+                "required": True,
+            })
+
+        # 生成执行代码
+        generated_code = generate_workflow_script(tool_chain)
+
+        # 保存用户消息（记录选择）
+        user_message = Message(
+            task_id=task.id,
+            role="user",
+            type="path",
+            content=f"确认选择分析方案: {explanation}",
+            data=candidate_data,
+            workflow_candidates=candidate_data,
+        )
+        user_message.save(db)
+
+        # 保存助手消息（代码生成结果 + 文件需求）
+        file_labels = "、".join(f["label"] for f in required_files)
+        # data 字段放前端需要的 requiredFiles（字符串数组）
+        file_name_list = [f["label"] for f in required_files]
+        ai_message = Message(
+            task_id=task.id,
+            role="assistant",
+            type="file_request",
+            content=f"代码生成完成\n\n✅ 代码已生成（{len(tool_chain)}步）\n✅ 安全检查通过\n\n请上传数据文件：\n{file_labels}",
+            data=json.dumps({"requiredFiles": file_name_list}, ensure_ascii=False),
+            required_files=json.dumps(required_files, ensure_ascii=False),
+            result_content=generated_code,
+            workflow_candidates=candidate_data,
         )
         ai_message.save(db)
 

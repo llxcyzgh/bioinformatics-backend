@@ -4,7 +4,7 @@ from app.http.requests.project_request import CreateProjectRequest, UpdateProjec
 from app.http.requests.task_request import CreateTaskRequest, UpdateTaskRequest, RenameTaskRequest
 from app.http.requests.user_request import CreateUserRequest, UpdateUserRequest
 from app.http.requests.template_request import CreateTemplateRequest, UpdateTemplateRequest
-from app.http.requests.chat_request import ChatRequest
+from app.http.requests.chat_request import ChatRequest, ConfirmPathRequest
 
 __all__ = [
     "LoginRequest",
@@ -22,4 +22,5 @@ __all__ = [
     "CreateTemplateRequest",
     "UpdateTemplateRequest",
     "ChatRequest",
+    "ConfirmPathRequest",
 ]

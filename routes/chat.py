@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.http.controllers import ChatController
 from app.http.middleware import Auth
+from app.http.requests.chat_request import ConfirmPathRequest
 from app.models import User
 from database import get_db
 
@@ -41,4 +42,20 @@ def chat(
         task_uuid=task_uuid,
         image_ids=parsed_image_ids,
         images=images,
+    )
+
+
+@router.post("/confirm-path")
+def confirm_path(
+    request: ConfirmPathRequest,
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    return ChatController.confirm_path(
+        task_uuid=request.task_uuid,
+        project_id=request.project_id,
+        candidate_id=request.candidate_id,
+        candidate_data=request.candidate_data,
+        user_id=current_user.id,
+        db=db,
     )

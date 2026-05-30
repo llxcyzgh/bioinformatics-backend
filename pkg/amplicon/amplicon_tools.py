@@ -18,6 +18,107 @@ class ToolDef(BaseModel):
 
 # ─── 数据类型 ID → 中文显示名 ──────────────────────────
 
+DATA_TYPE_TO_FILE_REQUIREMENT: dict[str, dict] = {
+    "FASTQ_PAIR": {
+        "typeId": "FASTQ_PAIR",
+        "label": "双端测序原始数据",
+        "description": "R1/R2 FASTQ文件对（.fastq.gz）",
+        "extensions": [".fastq", ".fastq.gz", ".fq.gz"],
+        "required": True,
+    },
+    "FASTA_SEQ": {
+        "typeId": "FASTA_SEQ",
+        "label": "FASTA序列文件",
+        "description": "参考序列或目标序列FASTA文件",
+        "extensions": [".fasta", ".fa", ".fna"],
+        "required": True,
+    },
+    "FEATURE_TABLE": {
+        "typeId": "FEATURE_TABLE",
+        "label": "ASV丰度表(BIOM)",
+        "description": "BIOM格式的特征表",
+        "extensions": [".biom", ".tsv"],
+        "required": True,
+    },
+    "FEATURE_SEQS": {
+        "typeId": "FEATURE_SEQS",
+        "label": "ASV代表序列(QZA)",
+        "description": "QIIME2格式的代表序列",
+        "extensions": [".qza"],
+        "required": True,
+    },
+    "FEATURE_FASTA": {
+        "typeId": "FEATURE_FASTA",
+        "label": "ASV序列(FASTA)",
+        "description": "FASTA格式的ASV序列",
+        "extensions": [".fasta", ".fa"],
+        "required": True,
+    },
+    "TAXONOMY_ASSIGN": {
+        "typeId": "TAXONOMY_ASSIGN",
+        "label": "物种分类注释结果",
+        "description": "已完成的分类注释",
+        "extensions": [".qza", ".tsv"],
+        "required": True,
+    },
+    "ROOTED_TREE": {
+        "typeId": "ROOTED_TREE",
+        "label": "有根系统发育树(QZA)",
+        "description": "QIIME2格式的系统发育树",
+        "extensions": [".qza"],
+        "required": True,
+    },
+    "TREE_NWK": {
+        "typeId": "TREE_NWK",
+        "label": "Newick格式树文件",
+        "description": "Newick格式的系统发育树",
+        "extensions": [".nwk", ".tree"],
+        "required": True,
+    },
+    "ASV_TABLE": {
+        "typeId": "ASV_TABLE",
+        "label": "ASV特征表(含分类)",
+        "description": "已合并分类信息的ASV表",
+        "extensions": [".tsv", ".csv"],
+        "required": True,
+    },
+    "ASV_TABLE_EVEN": {
+        "typeId": "ASV_TABLE_EVEN",
+        "label": "均一化ASV表",
+        "description": "抽平后的ASV特征表",
+        "extensions": [".qza", ".tsv"],
+        "required": True,
+    },
+    "RELATIVE_ABUNDANCE": {
+        "typeId": "RELATIVE_ABUNDANCE",
+        "label": "相对丰度表",
+        "description": "物种相对丰度数据",
+        "extensions": [".tsv", ".csv"],
+        "required": True,
+    },
+    "ALPHA_INDEX": {
+        "typeId": "ALPHA_INDEX",
+        "label": "Alpha多样性指数",
+        "description": "Alpha多样性计算结果",
+        "extensions": [".tsv", ".csv"],
+        "required": True,
+    },
+    "DIST_MATRIX": {
+        "typeId": "DIST_MATRIX",
+        "label": "Beta距离矩阵",
+        "description": "Beta多样性距离矩阵",
+        "extensions": [".tsv", ".qza"],
+        "required": True,
+    },
+    "PCOA_COORDS": {
+        "typeId": "PCOA_COORDS",
+        "label": "PCoA坐标",
+        "description": "主坐标分析结果",
+        "extensions": [".tsv", ".qza"],
+        "required": True,
+    },
+}
+
 DATA_TYPE_NAMES: dict[str, str] = {
     "FASTA_SEQ": "FASTA序列文件",
     "FASTQ_PAIR": "双端测序原始数据",
@@ -120,3 +221,49 @@ def get_all_tools() -> list[ToolDef]:
         # 功能预测
         _t("funpre", "PICRUSt2功能预测", ["FEATURE_TABLE", "FEATURE_FASTA"], ["FUNC_PREDICTION"], "功能预测"),
     ]
+
+
+def resolve_root_inputs(tool_chain_ids: list[str]) -> list[dict]:
+    """
+    从工具链推导用户必须提供的根输入文件。
+    遍历 tool_chain，跟踪已产生的数据类型，
+    每个工具的输入中不在已产生集合里的即为根输入。
+    """
+    tools = get_all_tools()
+    tool_map = {t.id: t for t in tools}
+
+    produced_types: set[str] = set()
+    required_inputs: list[str] = []
+
+    for tool_id in tool_chain_ids:
+        tool = tool_map.get(tool_id)
+        if not tool:
+            continue
+        for input_type in tool.inputs:
+            if input_type not in produced_types:
+                required_inputs.append(input_type)
+        for output_type in tool.outputs:
+            produced_types.add(output_type)
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for t in required_inputs:
+        if t not in seen:
+            seen.add(t)
+            unique.append(t)
+
+    result: list[dict] = []
+    for type_id in unique:
+        info = DATA_TYPE_TO_FILE_REQUIREMENT.get(type_id)
+        if info:
+            result.append(info)
+        else:
+            result.append({
+                "typeId": type_id,
+                "label": DATA_TYPE_NAMES.get(type_id, type_id),
+                "description": type_id,
+                "extensions": [],
+                "required": True,
+            })
+
+    return result
