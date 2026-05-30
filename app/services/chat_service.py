@@ -149,7 +149,8 @@ class ChatService:
                     "- 功能预测\n\n"
                     "您也可以说\"全流程\"进行完整分析。"
                 ),
-                "data": json.dumps({"known_inputs": available}, ensure_ascii=False),
+                "data": "",
+                "available_inputs": json.dumps(available, ensure_ascii=False),
             }
 
         # CASE C: 知道目标但不知道输入 → 追问数据
@@ -166,7 +167,8 @@ class ChatService:
                     "- 已做完质控的序列\n\n"
                     "请描述您的数据类型，以便我为您规划分析流程。"
                 ),
-                "data": json.dumps({"known_goals": goals}, ensure_ascii=False),
+                "data": "",
+                "goal_types": json.dumps(goals, ensure_ascii=False),
             }
 
         # CASE D: 都知道 → 运行规划器
@@ -179,7 +181,9 @@ class ChatService:
                     "根据您提供的信息，暂时无法找到合适的分析方案。\n"
                     "请尝试更详细地描述您的数据类型和分析需求，或者提供更多信息。"
                 ),
-                "data": json.dumps({"available_inputs": available, "goal_types": goals}, ensure_ascii=False),
+                "data": "",
+                "available_inputs": json.dumps(available, ensure_ascii=False),
+                "goal_types": json.dumps(goals, ensure_ascii=False),
             }
 
         best = candidates[0]
@@ -194,11 +198,10 @@ class ChatService:
         return {
             "type": "workflow",
             "content": f"输入数据：{input_names}\n分析目标：{goal_names}\n\n{summary}",
-            "data": json.dumps({
-                "available_inputs": available,
-                "goal_types": goals,
-                "candidates": candidates,
-            }, ensure_ascii=False),
+            "data": "",
+            "available_inputs": json.dumps(available, ensure_ascii=False),
+            "goal_types": json.dumps(goals, ensure_ascii=False),
+            "workflow_candidates": json.dumps(candidates, ensure_ascii=False),
         }
 
     @staticmethod
@@ -234,11 +237,6 @@ class ChatService:
                 except ValueError as e:
                     logger.warning(f"[ChatService] 图片上传失败: {e}")
 
-        # Build user message data (image URLs)
-        user_data = ""
-        if all_image_urls:
-            user_data = json.dumps({"images": all_image_urls}, ensure_ascii=False)
-
         # Analyze images with multimodal LLM and merge with text
         combined_content = content
         if all_image_urls:
@@ -255,7 +253,8 @@ class ChatService:
             role="user",
             type=msg_type if msg_type else "text",
             content=content,
-            data=user_data,
+            data="",
+            images=json.dumps(all_image_urls, ensure_ascii=False) if all_image_urls else "",
         )
         user_message.save(db)
 
@@ -284,7 +283,15 @@ class ChatService:
             role="assistant",
             type=ai_response["type"],
             content=ai_response["content"],
-            data=ai_response["data"],
+            data=ai_response.get("data", ""),
+            images=ai_response.get("images", ""),
+            available_inputs=ai_response.get("available_inputs", ""),
+            goal_types=ai_response.get("goal_types", ""),
+            workflow_candidates=ai_response.get("workflow_candidates", ""),
+            required_files=ai_response.get("required_files", ""),
+            result_content=ai_response.get("result_content", ""),
+            result_files=ai_response.get("result_files", ""),
+            next_steps=ai_response.get("next_steps", ""),
         )
         ai_message.save(db)
 

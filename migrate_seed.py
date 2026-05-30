@@ -1,3 +1,4 @@
+import json
 import sys
 import uuid
 from app.services import AuthService
@@ -250,7 +251,83 @@ def seed():
 
 def migrate():
     Base.metadata.create_all(bind=engine)
+    migrate_messages_v2()
     print("Database tables created successfully!")
+
+
+def migrate_messages_v2():
+    """Add structured columns to messages table (v2 schema)."""
+    import sqlite3
+    from config.database import DATABASE_URL
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    new_columns = [
+        ("images", "TEXT NOT NULL DEFAULT ''"),
+        ("available_inputs", "TEXT NOT NULL DEFAULT ''"),
+        ("goal_types", "TEXT NOT NULL DEFAULT ''"),
+        ("workflow_candidates", "TEXT NOT NULL DEFAULT ''"),
+        ("required_files", "TEXT NOT NULL DEFAULT ''"),
+        ("result_content", "TEXT NOT NULL DEFAULT ''"),
+        ("result_files", "TEXT NOT NULL DEFAULT ''"),
+        ("next_steps", "TEXT NOT NULL DEFAULT ''"),
+    ]
+
+    for col_name, col_type in new_columns:
+        try:
+            cursor.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+            print(f"  Added column messages.{col_name}")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e):
+                pass  # already exists
+            else:
+                raise
+
+    # Backfill existing rows
+    EXTRACT_MAP = {
+        "images": "images",
+        "available_inputs": "available_inputs",
+        "goal_types": "goal_types",
+        "candidates": "workflow_candidates",
+        "required_files": "required_files",
+        "results": "result_content",
+        "files": "result_files",
+        "nextSteps": "next_steps",
+    }
+
+    cursor.execute("SELECT id, data FROM messages WHERE data IS NOT NULL AND data != ''")
+    rows = cursor.fetchall()
+
+    updated = 0
+    for msg_id, data_str in rows:
+        try:
+            data = json.loads(data_str)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+
+        col_values = {}
+        for data_key, col_name in EXTRACT_MAP.items():
+            if data_key in data:
+                val = data.pop(data_key)
+                col_values[col_name] = json.dumps(val, ensure_ascii=False) if val else ""
+
+        if col_values:
+            remaining = json.dumps(data, ensure_ascii=False) if data else ""
+            sets = ", ".join(f"{col} = ?" for col in col_values)
+            values = list(col_values.values()) + [remaining, msg_id]
+            cursor.execute(
+                f"UPDATE messages SET {sets}, data = ? WHERE id = ?",
+                values,
+            )
+            updated += 1
+
+    conn.commit()
+    conn.close()
+    if updated:
+        print(f"  Backfilled {updated} messages with structured columns.")
 
 
 def migrate_fresh():

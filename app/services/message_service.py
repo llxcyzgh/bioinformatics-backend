@@ -59,6 +59,7 @@ class MessageService:
         content: str,
         data: str,
         user_id: int,
+        **kwargs,
     ) -> Message:
         """Create a user message and synchronously generate an AI system response.
 
@@ -74,6 +75,7 @@ class MessageService:
             type=type,
             content=content,
             data=data,
+            **kwargs,
         )
         user_message.save(db)
 
@@ -93,7 +95,11 @@ class MessageService:
             role='system',
             type=ai_response["type"],
             content=ai_response["content"],
-            data=ai_response["data"],
+            data=ai_response.get("data", ""),
+            available_inputs=ai_response.get("available_inputs", ""),
+            goal_types=ai_response.get("goal_types", ""),
+            workflow_candidates=ai_response.get("workflow_candidates", ""),
+            required_files=ai_response.get("required_files", ""),
         )
         system_message.save(db)
 

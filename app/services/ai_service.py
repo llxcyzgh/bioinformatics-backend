@@ -103,10 +103,8 @@ class AIService:
             return {
                 "type": "code",
                 "content": "print('hello world')",
-                "data": json.dumps({
-                    "security_review": "passed",
-                    "required_files": ["sample.txt"],
-                }),
+                "data": json.dumps({"security_review": "passed"}, ensure_ascii=False),
+                "required_files": json.dumps(["sample.txt"], ensure_ascii=False),
             }
 
         return {
