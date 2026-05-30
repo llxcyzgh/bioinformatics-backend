@@ -29,16 +29,17 @@ class MessageService:
         )
 
     @staticmethod
-    def get_messages_by_task_uuid(db: Session, task_uuid: str, user_id: int) -> List[Message]:
+    def get_messages_by_task_uuid(db: Session, task_uuid: str, user_id: int) -> dict:
         """Get all messages for a task looked up by UUID, ordered by created_at"""
         task = Task.where(db, uuid=task_uuid).first()
         if not task or task.user_id != user_id:
             raise ValueError("Task not found")
-        return (
+        messages = (
             Message.where(db, task_id=task.id)
             .order_by(Message.created_at)
             .all()
         )
+        return {"messages": messages, "task": task}
 
     @staticmethod
     def get_message_by_id(db: Session, message_id: int, user_id: int) -> Optional[Message]:

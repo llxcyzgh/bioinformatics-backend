@@ -23,10 +23,15 @@ class MessageController:
     def index_by_uuid(task_uuid: str, db: Session, user_id: int) -> dict:
         """Get all messages for a task by UUID"""
         try:
-            messages = MessageService.get_messages_by_task_uuid(db, task_uuid, user_id)
-            return {"data": [message.to_dict() for message in messages]}
+            result = MessageService.get_messages_by_task_uuid(db, task_uuid, user_id)
+            messages = result["messages"]
+            task = result["task"]
+            return {
+                "data": [message.to_dict() for message in messages],
+                "task": task.to_dict(),
+            }
         except ValueError:
-            return {"data": []}
+            return {"data": [], "task": None}
 
     @staticmethod
     def show(message_id: int, db: Session, user_id: int) -> JSONResponse:
