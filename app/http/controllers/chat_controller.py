@@ -20,6 +20,7 @@ class ChatController:
         user_id: int,
         db: Session,
         task_id: int | None = None,
+        task_uuid: str | None = None,
         image_ids: list[int] | None = None,
         images: list[UploadFile] | None = None,
     ) -> JSONResponse:
@@ -29,6 +30,7 @@ class ChatController:
             result = ChatService.chat(
                 db=db,
                 task_id=task_id,
+                task_uuid=task_uuid,
                 project_id=project_id,
                 content=content,
                 msg_type=msg_type,

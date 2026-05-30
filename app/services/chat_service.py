@@ -19,7 +19,15 @@ logger = logging.getLogger(__name__)
 class ChatService:
 
     @staticmethod
-    def _get_or_create_task(db: Session, task_id: Optional[int], project_id: int, user_id: int, task_name: str = "") -> Task:
+    def _get_or_create_task(db: Session, task_id: Optional[int], task_uuid: Optional[str], project_id: int, user_id: int, task_name: str = "") -> Task:
+        if task_uuid:
+            task = Task.where(db, uuid=task_uuid).first()
+            if not task:
+                raise ValueError("Task not found")
+            if task.user_id != user_id:
+                raise ValueError("Forbidden")
+            return task
+
         if task_id:
             task = Task.find(db, task_id)
             if not task:
@@ -135,6 +143,7 @@ class ChatService:
     def chat(
         db: Session,
         task_id: Optional[int],
+        task_uuid: Optional[str],
         project_id: int,
         content: str,
         msg_type: str,
@@ -146,22 +155,27 @@ class ChatService:
         # Build task name from content or image filenames
         task_name = content.strip() if content.strip() else (image_filenames[0] if image_filenames else "")
 
-        task = ChatService._get_or_create_task(db, task_id, project_id, user_id, task_name)
+        task = ChatService._get_or_create_task(db, task_id, task_uuid, project_id, user_id, task_name)
 
         # Upload inline images (after task exists so task_id is correct)
-        all_image_ids = list(image_ids) if image_ids else []
+        all_image_urls = []
+        if image_ids:
+            for fid in image_ids:
+                record = UploadService.find(db, fid, user_id)
+                if record:
+                    all_image_urls.append(f"/uploads/{record.file_path}")
         if images:
             for img in images:
                 try:
                     record = UploadService.create(img, user_id, db, task.id)
-                    all_image_ids.append(record.id)
+                    all_image_urls.append(f"/uploads/{record.file_path}")
                 except ValueError as e:
                     logger.warning(f"[ChatService] 图片上传失败: {e}")
 
-        # Build user message data (image references)
+        # Build user message data (image URLs)
         user_data = ""
-        if all_image_ids:
-            user_data = json.dumps({"image_ids": all_image_ids}, ensure_ascii=False)
+        if all_image_urls:
+            user_data = json.dumps({"images": all_image_urls}, ensure_ascii=False)
 
         user_message = Message(
             task_id=task.id,

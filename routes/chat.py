@@ -17,6 +17,7 @@ def chat(
     project_id: int = Form(...),
     content: str = Form(...),
     task_id: Optional[int] = Form(None),
+    task_uuid: Optional[str] = Form(None),
     type: str = Form("text"),
     image_ids: Optional[str] = Form(None),
     images: Optional[list[UploadFile]] = File(None),
@@ -37,6 +38,7 @@ def chat(
         user_id=current_user.id,
         db=db,
         task_id=task_id,
+        task_uuid=task_uuid,
         image_ids=parsed_image_ids,
         images=images,
     )

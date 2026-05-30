@@ -31,3 +31,6 @@ Thumbs.db
 
 # Uploads
 storage/uploads/
+
+# Ad-hoc test scripts
+test_playwright.py

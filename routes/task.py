@@ -95,6 +95,18 @@ def rename(
 # Nested Message routes under /tasks/{task_id}
 # ---------------------------------------------------------------------------
 
+@router.get("/uuid/{task_uuid}/messages", response_class=JSONResponse)
+def messages_index_by_uuid(
+    task_uuid: str,
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    """Get all messages for a task by UUID
+    GET /api/tasks/uuid/{uuid}/messages
+    """
+    return MessageController.index_by_uuid(task_uuid, db, current_user.id)
+
+
 @router.get("/{task_id}/messages", response_class=JSONResponse)
 def messages_index(
     task_id: int,
