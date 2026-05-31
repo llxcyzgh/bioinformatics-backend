@@ -613,6 +613,23 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Elapsed: ~60 seconds"
                     logs = f.read()
                 if "Job Completed" in logs:
                     completed = True
+                    # 更新执行消息的 data，将日志内容持久化
+                    exec_msg = (
+                        Message.where(db, task_id=task.id)
+                        .filter(Message.type == "text")
+                        .order_by(Message.id.desc())
+                        .first()
+                    )
+                    if exec_msg and exec_msg.data:
+                        try:
+                            data = json.loads(exec_msg.data)
+                            if data.get("execution_logs") and not data.get("execution_completed"):
+                                data["execution_completed"] = True
+                                data["execution_log_content"] = logs
+                                exec_msg.data = json.dumps(data, ensure_ascii=False)
+                                exec_msg.save(db)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
             except Exception as e:
                 logger.warning(f"[ChatService] 读取日志失败: {e}")
                 logs = f"读取日志失败: {e}"
