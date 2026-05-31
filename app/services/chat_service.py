@@ -492,50 +492,50 @@ class ChatService:
 #$ -j y
 #$ -o /shared/task_{tid}.log
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Job Started =========="
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Job ID: $JOB_ID"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Hostname: $(hostname)"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Working directory: $(pwd)"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Total duration: 60 seconds (12 checkpoints)"
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Job Started =========="
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Job ID: $JOB_ID"
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Hostname: $(hostname)"
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Working directory: $(pwd)"
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Total duration: 60 seconds (12 checkpoints)"
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 1/12]  Initializing environment..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 1/12]  Initializing environment..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 2/12]  Loading input data..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 2/12]  Loading input data..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 3/12]  Validating data format..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 3/12]  Validating data format..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 4/12]  Running quality control..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 4/12]  Running quality control..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 5/12]  Performing sequence alignment..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 5/12]  Performing sequence alignment..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 6/12]  Filtering low-quality reads..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 6/12]  Filtering low-quality reads..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 7/12]  Clustering OTUs..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 7/12]  Clustering OTUs..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 8/12]  Assigning taxonomy..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 8/12]  Assigning taxonomy..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 9/12]  Computing diversity indices..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 9/12]  Computing diversity indices..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 10/12] Generating statistics report..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 10/12] Generating statistics report..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 11/12] Rendering visualization plots..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 11/12] Rendering visualization plots..."
 
 sleep 5
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 12/12] Writing output files..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 12/12] Writing output files..."
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Job Completed =========="
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Elapsed: ~60 seconds"
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Job Completed =========="
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Elapsed: ~60 seconds"
 """
         container_script = f"/shared/task_{tid}.sh"
         host_script = os.path.join(os.path.dirname(__file__), "..", "..", "shared", f"task_{tid}.sh")
