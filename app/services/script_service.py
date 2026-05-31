@@ -4,15 +4,56 @@ import os
 import uuid
 from typing import Optional
 
+import httpx
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from app.models import Script
-from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
+from config.llm import DASHSCOPE_API_KEY, DASHSCOPE_API_BASE, DASHSCOPE_MODEL_NAME, LLM_PARSER_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
 SCRIPTS_DIR = os.getenv("SCRIPTS_DIR", "scripts")
+
+
+def _parse_script_io_llm(script_content: str) -> dict:
+    """用 LLM 解析脚本代码，返回 inputs/outputs"""
+    if not DASHSCOPE_API_KEY:
+        return {"inputs": [], "outputs": []}
+
+    system_prompt = """你是一个生物信息学脚本分析专家。分析用户给出的脚本代码，识别其输入和输出文件。
+
+返回严格 JSON 格式（不要 markdown 代码块）：
+{"inputs": ["input_file.fastq", "config.yaml"], "outputs": ["result.txt", "report.pdf"]}
+
+规则：
+- 提取文件名和文件类型，包括从命令行参数、变量赋值、函数调用中读取的文件路径
+- 只返回文件名，不要描述
+- 如果无法确定，返回空数组"""
+
+    try:
+        response = httpx.post(
+            f"{DASHSCOPE_API_BASE}/chat/completions",
+            headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
+            json={
+                "model": DASHSCOPE_MODEL_NAME,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"分析以下脚本代码的输入输出文件：\n\n{script_content[:6000]}"},
+                ],
+                "temperature": 0.1,
+                "response_format": {"type": "json_object"},
+            },
+            timeout=LLM_PARSER_TIMEOUT,
+        )
+        response.raise_for_status()
+        raw = response.json()["choices"][0]["message"]["content"]
+        result = json.loads(raw)
+        logger.info(f"[ScriptService] LLM 解析脚本 IO: {raw[:300]}")
+        return result
+    except Exception as e:
+        logger.warning(f"[ScriptService] LLM 解析脚本 IO 失败: {e}")
+        return {"inputs": [], "outputs": []}
 
 
 class ScriptService:
@@ -124,6 +165,17 @@ class ScriptService:
         md_content = ""
         if md_file:
             md_content = md_file.file.read().decode("utf-8", errors="replace")
+
+        # LLM 自动解析 inputs/outputs
+        try:
+            script_text = content.decode("utf-8", errors="replace")
+            parsed_io = _parse_script_io_llm(script_text)
+            if parsed_io.get("inputs") and inputs == "[]":
+                inputs = json.dumps(parsed_io["inputs"], ensure_ascii=False)
+            if parsed_io.get("outputs") and outputs == "[]":
+                outputs = json.dumps(parsed_io["outputs"], ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"[ScriptService] 脚本 IO 解析异常: {e}")
 
         return ScriptService.create(
             db=db,
