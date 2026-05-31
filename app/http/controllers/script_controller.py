@@ -5,9 +5,16 @@ from fastapi.responses import JSONResponse, FileResponse
 from sqlalchemy.orm import Session
 
 from app.services import ScriptService
+from app.models import ScriptFolder
 from config.upload import UPLOAD_DIR
 
 SCRIPTS_DIR = os.getenv("SCRIPTS_DIR", "scripts")
+
+
+def _resolve_category(db: Session, folder_id: int) -> str:
+    """从 folder_id 推导 category：取直接上级文件夹名称"""
+    folder = ScriptFolder.find(db, folder_id)
+    return folder.name if folder else ""
 
 
 class ScriptController:
@@ -54,6 +61,7 @@ class ScriptController:
         valid_until: str,
     ) -> JSONResponse:
         try:
+            category = _resolve_category(db, folder_id) or category
             script = ScriptService.upload_script(
                 db=db,
                 script_file=script_file,
@@ -85,6 +93,8 @@ class ScriptController:
     @staticmethod
     def update_script(script_id: int, db: Session, **kwargs) -> JSONResponse:
         try:
+            if "folder_id" in kwargs:
+                kwargs["category"] = _resolve_category(db, kwargs["folder_id"]) or kwargs.get("category", "")
             script = ScriptService.update(db, script_id, **kwargs)
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
