@@ -1,0 +1,22 @@
+services:
+  sge-master:
+    image: drmaa/gridengine:latest
+    container_name: sge-master
+    hostname: docker
+    privileged: true
+    ports:
+      - "6444:6444"
+      - "6445:6445"
+    entrypoint: ["/bin/bash", "/opt/entrypoint-sge.sh"]
+    volumes:
+      - ./entrypoint-sge.sh:/opt/entrypoint-sge.sh:ro
+      - sge-home:/root
+      - ../shared:/shared
+    healthcheck:
+      test: ["CMD-SHELL", "source /opt/sge/default/common/settings.sh && qstat -f"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  sge-home:
