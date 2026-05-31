@@ -65,7 +65,7 @@ class Message(Model):
                 try:
                     merged[key] = json.loads(val)
                 except (json.JSONDecodeError, TypeError):
-                    pass
+                    merged[key] = val
 
         return {
             "id": self.id,
