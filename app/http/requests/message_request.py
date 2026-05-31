@@ -1,3 +1,4 @@
+from typing import Any
 from pydantic import BaseModel, Field
 
 
@@ -9,3 +10,15 @@ class CreateMessageRequest(BaseModel):
     type: str = Field(pattern=r'^(text|path)$')
     content: str = Field(min_length=1)
     data: str = ''
+
+
+class FileMappingItem(BaseModel):
+    slot_label: str
+    file_id: int
+    original_name: str
+
+
+class ConfirmUploadRequest(BaseModel):
+    task_uuid: str
+    project_id: int
+    file_mappings: list[FileMappingItem]

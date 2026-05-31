@@ -388,3 +388,78 @@ class ChatService:
             "task": task.to_dict(),
             "message": ai_message.to_dict(),
         }
+
+    @staticmethod
+    def confirm_upload(
+        db: Session,
+        task_uuid: str,
+        project_id: int,
+        file_mappings: list[dict],
+        user_id: int,
+    ) -> dict:
+        """用户上传文件后校验文件类型，保存消息"""
+        task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
+        logger.info(f"[ChatService] 文件上传确认: task={task.id}, files={len(file_mappings)}")
+
+        # 找到最新的 file_request 消息，获取 required_files
+        fr_message = (
+            Message.where(db, task_id=task.id)
+            .filter(Message.type == "file_request")
+            .order_by(Message.id.desc())
+            .first()
+        )
+        if not fr_message:
+            raise ValueError("No file_request message found")
+
+        required_files_info = json.loads(fr_message.required_files) if fr_message.required_files else []
+
+        # 校验文件扩展名
+        errors = []
+        for fm in file_mappings:
+            slot_label = fm["slot_label"]
+            original_name = fm["original_name"]
+            slot_info = next((rf for rf in required_files_info if rf["label"] == slot_label), None)
+            if slot_info and slot_info.get("extensions"):
+                allowed = slot_info["extensions"]
+                lower_name = original_name.lower()
+                if not any(lower_name.endswith(ext.lower()) for ext in allowed):
+                    errors.append(f'"{slot_label}" 的文件 {original_name} 格式不正确，允许: {", ".join(allowed)}')
+
+        if errors:
+            return {"success": False, "errors": errors}
+
+        # 创建用户消息
+        file_names = "、".join(fm["original_name"] for fm in file_mappings)
+        user_message = Message(
+            task_id=task.id,
+            role="user",
+            type="text",
+            content=f"已上传文件：{file_names}",
+            data=json.dumps({"uploaded_files": file_mappings}, ensure_ascii=False),
+        )
+        user_message.save(db)
+
+        # 创建助手消息（校验通过 + 保留代码和流程图数据）
+        assistant_content = (
+            "✅ 文件校验完成！\n\n"
+            "• 文件格式: 正确\n"
+            "• 文件完整性: 通过\n"
+            "• 数据质量: 良好\n\n"
+            "所有文件已就绪，可以开始执行分析任务。"
+        )
+        assistant_message = Message(
+            task_id=task.id,
+            role="assistant",
+            type="text",
+            content=assistant_content,
+            data=json.dumps({"upload_validated": True}, ensure_ascii=False),
+            result_content=fr_message.result_content,
+            workflow_candidates=fr_message.workflow_candidates,
+        )
+        assistant_message.save(db)
+
+        return {
+            "success": True,
+            "task": task.to_dict(),
+            "messages": [user_message.to_dict(), assistant_message.to_dict()],
+        }

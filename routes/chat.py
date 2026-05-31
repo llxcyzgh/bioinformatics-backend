@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.http.controllers import ChatController
 from app.http.middleware import Auth
 from app.http.requests.chat_request import ConfirmPathRequest
+from app.http.requests.message_request import ConfirmUploadRequest
 from app.models import User
 from database import get_db
 
@@ -56,6 +57,21 @@ def confirm_path(
         project_id=request.project_id,
         candidate_id=request.candidate_id,
         candidate_data=request.candidate_data,
+        user_id=current_user.id,
+        db=db,
+    )
+
+
+@router.post("/confirm-upload")
+def confirm_upload(
+    request: ConfirmUploadRequest,
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    return ChatController.confirm_upload(
+        task_uuid=request.task_uuid,
+        project_id=request.project_id,
+        file_mappings=[fm.model_dump() for fm in request.file_mappings],
         user_id=current_user.id,
         db=db,
     )
