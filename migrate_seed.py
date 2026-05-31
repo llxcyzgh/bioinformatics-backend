@@ -254,6 +254,7 @@ def seed():
 def migrate():
     Base.metadata.create_all(bind=engine)
     migrate_messages_v2()
+    migrate_tasks_v2()
     print("Database tables created successfully!")
 
 
@@ -330,6 +331,33 @@ def migrate_messages_v2():
     conn.close()
     if updated:
         print(f"  Backfilled {updated} messages with structured columns.")
+
+
+def migrate_tasks_v2():
+    """Add qsub_id and script_path columns to tasks table."""
+    import sqlite3
+    from config.database import DATABASE_URL
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    new_columns = [
+        ("qsub_id", "TEXT NOT NULL DEFAULT ''"),
+        ("script_path", "TEXT NOT NULL DEFAULT ''"),
+    ]
+
+    for col_name, col_type in new_columns:
+        try:
+            cursor.execute(f"ALTER TABLE tasks ADD COLUMN {col_name} {col_type}")
+            print(f"  Added column tasks.{col_name}")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e):
+                pass
+            else:
+                raise
+
+    conn.commit()
+    conn.close()
 
 
 def migrate_fresh():

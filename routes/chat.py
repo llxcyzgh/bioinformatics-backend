@@ -2,6 +2,7 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.http.controllers import ChatController
@@ -72,6 +73,38 @@ def confirm_upload(
         task_uuid=request.task_uuid,
         project_id=request.project_id,
         file_mappings=[fm.model_dump() for fm in request.file_mappings],
+        user_id=current_user.id,
+        db=db,
+    )
+
+
+class StartExecutionRequest(BaseModel):
+    task_uuid: str = Field(min_length=1)
+    project_id: int = Field(default=0)
+
+
+@router.post("/start-execution")
+def start_execution(
+    request: StartExecutionRequest,
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    return ChatController.start_execution(
+        task_uuid=request.task_uuid,
+        project_id=request.project_id,
+        user_id=current_user.id,
+        db=db,
+    )
+
+
+@router.get("/execution-logs/{task_uuid}")
+def execution_logs(
+    task_uuid: str,
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    return ChatController.get_execution_logs(
+        task_uuid=task_uuid,
         user_id=current_user.id,
         db=db,
     )

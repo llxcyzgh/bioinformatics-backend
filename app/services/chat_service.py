@@ -2,6 +2,8 @@ import json
 import logging
 import base64
 import os
+import re
+import subprocess
 import uuid
 from typing import Optional
 
@@ -462,4 +464,110 @@ class ChatService:
             "success": True,
             "task": task.to_dict(),
             "messages": [user_message.to_dict(), assistant_message.to_dict()],
+        }
+
+    @staticmethod
+    def start_execution(
+        db: Session,
+        task_uuid: str,
+        project_id: int,
+        user_id: int,
+    ) -> dict:
+        """提交 qsub 任务执行"""
+        task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
+        logger.info(f"[ChatService] 开始执行: task={task.id}")
+
+        # 找到最新 file_request 消息，获取生成的代码
+        fr_message = (
+            Message.where(db, task_id=task.id)
+            .filter(Message.type == "file_request")
+            .order_by(Message.id.desc())
+            .first()
+        )
+        if not fr_message or not fr_message.result_content:
+            raise ValueError("No generated code found for execution")
+
+        # 写入脚本文件
+        script_path = f"/shared/task_{task.id}.sh"
+        with open(script_path, "w", encoding="utf-8") as f:
+            f.write(fr_message.result_content)
+        os.chmod(script_path, 0o755)
+        logger.info(f"[ChatService] 脚本已写入: {script_path}")
+
+        # 通过 docker exec 执行 qsub
+        cmd = (
+            f"docker exec sge-master bash -c "
+            f"'source /opt/sge/default/common/settings.sh && qsub -o /shared {script_path}'"
+        )
+        logger.info(f"[ChatService] 执行命令: {cmd}")
+
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+        output = result.stdout.strip()
+        logger.info(f"[ChatService] qsub 输出: {output}")
+
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() or output
+            raise ValueError(f"qsub 提交失败: {error_msg}")
+
+        # 解析 job ID
+        match = re.search(r"Your job (\d+)", output)
+        if not match:
+            raise ValueError(f"无法解析 qsub 返回: {output}")
+
+        qsub_id = match.group(1)
+        logger.info(f"[ChatService] 任务已提交, qsub_id={qsub_id}")
+
+        # 更新 Task
+        task.qsub_id = qsub_id
+        task.script_path = script_path
+        task.save(db)
+
+        # 创建助手消息
+        ai_message = Message(
+            task_id=task.id,
+            role="assistant",
+            type="text",
+            content=f"任务已提交，Job ID: {qsub_id}\n\n正在执行分析脚本，请等待日志输出...",
+            data=json.dumps({"execution_logs": True, "qsub_id": qsub_id}, ensure_ascii=False),
+        )
+        ai_message.save(db)
+
+        return {
+            "task": task.to_dict(),
+            "message": ai_message.to_dict(),
+            "qsub_id": qsub_id,
+        }
+
+    @staticmethod
+    def get_execution_logs(
+        db: Session,
+        task_uuid: str,
+        user_id: int,
+    ) -> dict:
+        """获取任务执行日志"""
+        task = Task.where(db, uuid=task_uuid).first()
+        if not task or task.user_id != user_id:
+            raise ValueError("Task not found")
+        if not task.qsub_id:
+            return {"logs": "", "completed": False, "qsub_id": ""}
+
+        # SGE 输出文件: script.sh.o{jobid}
+        log_path = f"{task.script_path}.o{task.qsub_id}"
+        logs = ""
+        completed = False
+
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                    logs = f.read()
+                if "Job Completed" in logs:
+                    completed = True
+            except Exception as e:
+                logger.warning(f"[ChatService] 读取日志失败: {e}")
+                logs = f"读取日志失败: {e}"
+
+        return {
+            "logs": logs,
+            "completed": completed,
+            "qsub_id": task.qsub_id,
         }

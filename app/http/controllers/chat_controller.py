@@ -99,3 +99,39 @@ class ChatController:
             else:
                 code = status.HTTP_400_BAD_REQUEST
             return JSONResponse(status_code=code, content={"detail": msg})
+
+    @staticmethod
+    def start_execution(
+        task_uuid: str,
+        project_id: int,
+        user_id: int,
+        db: Session,
+    ) -> JSONResponse:
+        try:
+            result = ChatService.start_execution(
+                db=db,
+                task_uuid=task_uuid,
+                project_id=project_id,
+                user_id=user_id,
+            )
+            return JSONResponse(status_code=status.HTTP_200_OK, content=result)
+        except ValueError as e:
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)})
+
+    @staticmethod
+    def get_execution_logs(
+        task_uuid: str,
+        user_id: int,
+        db: Session,
+    ) -> JSONResponse:
+        try:
+            result = ChatService.get_execution_logs(
+                db=db,
+                task_uuid=task_uuid,
+                user_id=user_id,
+            )
+            return JSONResponse(status_code=status.HTTP_200_OK, content=result)
+        except ValueError as e:
+            msg = str(e)
+            code = status.HTTP_404_NOT_FOUND if "not found" in msg.lower() else status.HTTP_400_BAD_REQUEST
+            return JSONResponse(status_code=code, content={"detail": msg})

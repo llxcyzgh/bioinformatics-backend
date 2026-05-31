@@ -19,6 +19,8 @@ class Task(Model):
     name = Column(String, nullable=False, default='')
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, default=0)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, default=0)
+    qsub_id = Column(String, nullable=False, default='')
+    script_path = Column(String, nullable=False, default='')
 
     # 关系
     project = relationship("Project", backref="tasks")
@@ -34,6 +36,8 @@ class Task(Model):
             "uuid": self.uuid,
             "name": self.name,
             "user_id": self.user_id,
+            "qsub_id": self.qsub_id,
+            "script_path": self.script_path,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
