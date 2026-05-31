@@ -484,15 +484,64 @@ class ChatService:
             .order_by(Message.id.desc())
             .first()
         )
-        if not fr_message or not fr_message.result_content:
-            raise ValueError("No generated code found for execution")
+        # 写入固定模拟脚本到宿主机 shared/ 目录
+        tid = task.id
+        script = f"""#!/bin/bash
+#$ -N task_{tid}
+#$ -cwd
+#$ -j y
+#$ -o /shared/task_{tid}.log
 
-        # 写入脚本到宿主机 shared/ 目录（挂载到容器 /shared/）
-        container_script = f"/shared/task_{task.id}.sh"
-        host_script = os.path.join(os.path.dirname(__file__), "..", "..", "shared", f"task_{task.id}.sh")
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Job Started =========="
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Job ID: $JOB_ID"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Hostname: $(hostname)"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Working directory: $(pwd)"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Total duration: 60 seconds (12 checkpoints)"
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 1/12]  Initializing environment..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 2/12]  Loading input data..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 3/12]  Validating data format..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 4/12]  Running quality control..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 5/12]  Performing sequence alignment..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 6/12]  Filtering low-quality reads..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 7/12]  Clustering OTUs..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 8/12]  Assigning taxonomy..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 9/12]  Computing diversity indices..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 10/12] Generating statistics report..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 11/12] Rendering visualization plots..."
+
+sleep 5
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step 12/12] Writing output files..."
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Job Completed =========="
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Elapsed: ~60 seconds"
+"""
+        container_script = f"/shared/task_{tid}.sh"
+        host_script = os.path.join(os.path.dirname(__file__), "..", "..", "shared", f"task_{tid}.sh")
         host_script = os.path.normpath(host_script)
-        with open(host_script, "w", encoding="utf-8") as f:
-            f.write(fr_message.result_content)
+        with open(host_script, "w", encoding="utf-8", newline="\n") as f:
+            f.write(script)
 
         # 通过 docker exec 执行 qsub
         qsub_cmd = f"source /opt/sge/default/common/settings.sh && qsub -o /shared {container_script}"
@@ -551,8 +600,8 @@ class ChatService:
         if not task.qsub_id:
             return {"logs": "", "completed": False, "qsub_id": ""}
 
-        # SGE 输出文件: script.sh.o{jobid}，宿主机 shared/ 目录
-        log_filename = f"task_{task.id}.sh.o{task.qsub_id}"
+        # 日志文件由 SGE -o 参数指定: /shared/task_{id}.log
+        log_filename = f"task_{task.id}.log"
         host_log = os.path.join(os.path.dirname(__file__), "..", "..", "shared", log_filename)
         host_log = os.path.normpath(host_log)
         logs = ""
