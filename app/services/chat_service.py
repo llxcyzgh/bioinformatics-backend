@@ -600,8 +600,8 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Elapsed: ~60 seconds"
         if not task.qsub_id:
             return {"logs": "", "completed": False, "qsub_id": ""}
 
-        # 日志文件由 SGE -o 参数指定: /shared/task_{id}.log
-        log_filename = f"task_{task.id}.log"
+        # SGE 日志文件: task_{id}.o{qsub_id}
+        log_filename = f"task_{task.id}.o{task.qsub_id}"
         host_log = os.path.join(os.path.dirname(__file__), "..", "..", "shared", log_filename)
         host_log = os.path.normpath(host_log)
         logs = ""
