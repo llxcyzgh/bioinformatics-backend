@@ -568,7 +568,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Elapsed: ~60 seconds"
 
         # 更新 Task
         task.qsub_id = qsub_id
-        task.script_path = script_path
+        task.script_path = container_script
         task.save(db)
 
         # 创建助手消息
