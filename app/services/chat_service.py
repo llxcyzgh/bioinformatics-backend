@@ -487,28 +487,15 @@ class ChatService:
         if not fr_message or not fr_message.result_content:
             raise ValueError("No generated code found for execution")
 
-        # 通过 docker exec + stdin 在容器内写入脚本文件
-        script_path = f"/shared/task_{task.id}.sh"
-        logger.info(f"[ChatService] 写入脚本: {script_path}")
-        write_result = subprocess.run(
-            ["docker", "exec", "-i", "sge-master", "bash", "-c", f"cat > {script_path}"],
-            input=fr_message.result_content,
-            text=True,
-            capture_output=True,
-            timeout=15,
-        )
-        if write_result.returncode != 0:
-            raise ValueError(f"写入脚本失败: {write_result.stderr.strip()}")
-
-        # 设置执行权限
-        subprocess.run(
-            ["docker", "exec", "sge-master", "chmod", "+x", script_path],
-            capture_output=True, text=True, timeout=10,
-        )
-        logger.info(f"[ChatService] 脚本已写入: {script_path}")
+        # 写入脚本到宿主机 shared/ 目录（挂载到容器 /shared/）
+        container_script = f"/shared/task_{task.id}.sh"
+        host_script = os.path.join(os.path.dirname(__file__), "..", "..", "shared", f"task_{task.id}.sh")
+        host_script = os.path.normpath(host_script)
+        with open(host_script, "w", encoding="utf-8") as f:
+            f.write(fr_message.result_content)
 
         # 通过 docker exec 执行 qsub
-        qsub_cmd = f"source /opt/sge/default/common/settings.sh && qsub -o /shared {script_path}"
+        qsub_cmd = f"source /opt/sge/default/common/settings.sh && qsub -o /shared {container_script}"
         logger.info(f"[ChatService] 执行命令: {qsub_cmd}")
 
         result = subprocess.run(
@@ -564,23 +551,22 @@ class ChatService:
         if not task.qsub_id:
             return {"logs": "", "completed": False, "qsub_id": ""}
 
-        # SGE 输出文件: script.sh.o{jobid}
-        log_path = f"{task.script_path}.o{task.qsub_id}"
+        # SGE 输出文件: script.sh.o{jobid}，宿主机 shared/ 目录
+        log_filename = f"task_{task.id}.sh.o{task.qsub_id}"
+        host_log = os.path.join(os.path.dirname(__file__), "..", "..", "shared", log_filename)
+        host_log = os.path.normpath(host_log)
         logs = ""
         completed = False
 
-        try:
-            result = subprocess.run(
-                ["docker", "exec", "sge-master", "cat", log_path],
-                capture_output=True, text=True, timeout=10,
-            )
-            if result.returncode == 0:
-                logs = result.stdout
+        if os.path.exists(host_log):
+            try:
+                with open(host_log, "r", encoding="utf-8", errors="replace") as f:
+                    logs = f.read()
                 if "Job Completed" in logs:
                     completed = True
-        except Exception as e:
-            logger.warning(f"[ChatService] 读取日志失败: {e}")
-            logs = f"读取日志失败: {e}"
+            except Exception as e:
+                logger.warning(f"[ChatService] 读取日志失败: {e}")
+                logs = f"读取日志失败: {e}"
 
         return {
             "logs": logs,
