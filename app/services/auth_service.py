@@ -58,7 +58,15 @@ class AuthService:
         access_token = AuthService.create_access_token(data={"sub": str(user.id)})
         return {
             "token": access_token,
-            "user": user.to_dict(),
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "realname": user.full_name,
+                "email": user.email,
+                "roles": [{"id": 1, "name": "admin", "description": "Administrator", "created_at": "", "updated_at": ""}] if user.username == "admin" else [{"id": 2, "name": "user", "description": "User", "created_at": "", "updated_at": ""}],
+                "permissions": [{"id": 1, "name": "*", "description": "All permissions", "created_at": "", "updated_at": ""}] if user.username == "admin" else [],
+            },
         }, None
 
     @staticmethod

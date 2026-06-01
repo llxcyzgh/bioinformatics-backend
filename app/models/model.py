@@ -28,7 +28,16 @@ class Model(Base):
 
     def to_dict(self):
         """Convert model to dictionary"""
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        from datetime import datetime, date
+        result = {}
+        for c in self.__table__.columns:
+            val = getattr(self, c.name)
+            if isinstance(val, datetime):
+                val = val.isoformat()
+            elif isinstance(val, date):
+                val = val.isoformat()
+            result[c.name] = val
+        return result
 
     @classmethod
     def find(cls, db, id):
