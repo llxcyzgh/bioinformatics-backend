@@ -7,6 +7,8 @@ import subprocess
 import uuid
 from typing import Optional
 
+import httpx
+
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
@@ -331,6 +333,11 @@ class ChatService:
         tool_ids = [t["id"] for t in tool_chain if isinstance(t, dict) and "id" in t]
         explanation = candidate.get("explanation", "")
 
+        # DEBUG: 写文件跟踪执行
+        with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
+            _dbg.write(f"\n=== confirm_path called ===\n")
+            _dbg.write(f"tool_ids: {tool_ids}\n")
+
         # 确定必需文件
         required_files = resolve_root_inputs(tool_ids)
         logger.info(f"[ChatService] 必需文件: {[f['typeId'] for f in required_files]}")
@@ -346,18 +353,48 @@ class ChatService:
                 "required": True,
             })
 
-        # 生成执行代码：优先从 Script 表读取真实脚本，回退到模板
+        # 生成执行代码：收集每个节点的脚本内容，交给 LLM 生成完整脚本
         script_parts = []
         for tid in tool_ids:
             script_record = ScriptService.get_by_tool_id(db, tid)
             if script_record and script_record.file_path:
                 content = ScriptService.read_script_content(script_record.file_path)
                 if content:
-                    script_parts.append(f"# ===== {script_record.name} ({tid}) =====\n{content}")
-        if script_parts:
-            generated_code = "\n\n".join(script_parts)
-        else:
-            generated_code = generate_workflow_script(tool_chain)
+                    script_parts.append({
+                        "tool_id": tid,
+                        "name": script_record.name,
+                        "category": script_record.category or "",
+                        "content": content,
+                        "inputs": script_record.inputs,
+                        "outputs": script_record.outputs,
+                    })
+
+        # DEBUG
+        with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
+            _dbg.write(f"script_parts count: {len(script_parts)}\n")
+            _dbg.write(f"tool_ids with scripts: {[s['tool_id'] for s in script_parts]}\n")
+
+        # 尝试 LLM 生成
+        generated_code = ChatService._generate_script_with_llm(
+            script_parts=script_parts,
+            tool_chain=tool_chain,
+            required_files=required_files,
+        )
+
+        # DEBUG
+        with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
+            _dbg.write(f"LLM result: {type(generated_code).__name__}, len={len(generated_code) if generated_code else 0}\n")
+
+        # fallback: LLM 失败时用简单拼接
+        if not generated_code:
+            logger.warning("[ChatService] LLM 代码生成失败，fallback 到简单拼接")
+            if script_parts:
+                generated_code = "\n\n".join(
+                    f"# ===== {s['name']} ({s['tool_id']}) =====\n{s['content']}"
+                    for s in script_parts
+                )
+            else:
+                generated_code = generate_workflow_script(tool_chain)
 
         # 保存用户消息（记录选择）
         user_message = Message(
@@ -390,6 +427,154 @@ class ChatService:
             "task": task.to_dict(),
             "message": ai_message.to_dict(),
         }
+
+    @staticmethod
+    def _generate_script_with_llm(
+        script_parts: list,
+        tool_chain: list,
+        required_files: list,
+    ) -> str | None:
+        """用 LLM 根据工具链脚本内容生成参数衔接的完整执行脚本"""
+        with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
+            _dbg.write(f"--- _generate_script_with_llm ENTERED, parts={len(script_parts)} ---\n")
+
+        if not script_parts:
+            with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
+                _dbg.write("--- script_parts is EMPTY, returning None ---\n")
+            return None
+
+        try:
+            from config.llm import (
+                DASHSCOPE_API_KEY,
+                DASHSCOPE_API_BASE,
+                DASHSCOPE_MODEL_NAME,
+                LLM_CODEGEN_TIMEOUT,
+            )
+
+            with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
+                _dbg.write(f"API_KEY: {repr(DASHSCOPE_API_KEY[:10])}... (len={len(DASHSCOPE_API_KEY)})\n")
+                _dbg.write(f"API_BASE: {DASHSCOPE_API_BASE}\n")
+                _dbg.write(f"MODEL: {DASHSCOPE_MODEL_NAME}\n")
+                _dbg.write(f"TIMEOUT: {LLM_CODEGEN_TIMEOUT}\n")
+
+            if not DASHSCOPE_API_KEY:
+                with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
+                    _dbg.write("--- API_KEY is empty, returning None ---\n")
+                return None
+
+            total_steps = len(script_parts)
+
+            # 构建工具链描述
+            chain_desc = ""
+            data_flow = ""
+            for i, sp in enumerate(script_parts):
+                chain_desc += f"\n步骤 {i+1}/{total_steps}: {sp['name']} (tool_id={sp['tool_id']}, 类别={sp['category']})\n"
+                chain_desc += f"  输入数据类型: {sp['inputs']}\n"
+                chain_desc += f"  输出数据类型: {sp['outputs']}\n"
+                if i > 0:
+                    prev = script_parts[i - 1]
+                    data_flow += f"- 步骤{i} ({prev['name']}) 的输出 → 步骤{i+1} ({sp['name']}) 的输入\n"
+
+            # 构建需要用户上传的文件描述
+            upload_desc = ""
+            for rf in required_files:
+                upload_desc += f"- {rf['label']} (类型ID: {rf['typeId']}, 格式: {', '.join(rf.get('extensions', []))})\n"
+
+            # 构建每个脚本的完整内容
+            scripts_content = ""
+            for sp in script_parts:
+                scripts_content += f"\n{'='*60}\n# 脚本: {sp['name']} ({sp['tool_id']})\n{'='*60}\n{sp['content']}\n"
+
+            system_prompt = """你是一个生物信息分析脚本生成专家。你的任务是根据提供的工具链中每个节点的原始脚本片段，生成一个完整的、可直接执行的 bash 脚本。
+
+## 核心要求
+
+1. **参数衔接**：上一步的输出文件必须作为下一步的输入文件。仔细分析每个脚本的参数接口（-r1, -m, -w 等），确保数据流正确传递。
+
+2. **工作目录**：使用 `/shared/` 作为基础工作目录。所有中间文件和输出文件都放在 `/shared/` 下。
+
+3. **环境变量覆盖**：容器内工具路径如下，必须在脚本开头 export：
+   - `export PATH=/opt/conda/bin:$PATH`
+   - `RSCRIPT_BIN=/opt/conda/bin/Rscript`
+   - `PERL_BIN=/usr/bin/perl`
+   - `CONVERT_BIN=/opt/conda/bin/convert`
+   覆盖脚本中所有默认的工具路径环境变量。对于脚本中引用的 R/Perl 辅助脚本路径（如 /newVol/...），如果不存在则在脚本开头用 `MODULE_ENV_FILE` 或直接 export 覆盖为 `/shared/lib/` 下的对应路径。如果 `/shared/lib/` 下也没有，则跳过该辅助脚本的调用并输出警告，不要报错退出。
+
+4. **用户上传文件**：用户上传的文件存放在 `/shared/` 目录下，文件名使用上传时的原始文件名。
+
+5. **进度输出**：每个步骤开始前输出进度信息，格式为：
+   `echo "[$(date '+%Y-%m-%d %H:%M:%S')] [步骤 X/N] 正在执行: xxx"`
+
+6. **错误处理**：使用 `set -euo pipefail`，但每个步骤用独立判断，某步骤失败时输出错误信息但不立即退出，继续执行后续步骤（除非后续步骤完全依赖前一步输出）。
+
+7. **保留核心逻辑**：保留每个原始脚本的核心分析逻辑和参数解析代码，只调整：
+   - 文件路径参数（改为变量引用）
+   - 工具路径环境变量
+   - 参数传递方式（从命令行参数改为变量赋值）
+
+8. **输出格式**：只输出 bash 脚本内容，不要任何解释说明。以 #!/bin/bash 开头。
+
+9. **简洁生成**：每个步骤的脚本要精简，去掉冗余的 usage/help 信息，只保留核心执行逻辑。"""
+
+            user_message = f"""请根据以下工具链信息生成完整的执行脚本：
+
+## 工具链顺序和数据流
+{chain_desc}
+
+## 数据流向
+{data_flow}
+
+## 用户需要上传的文件
+{upload_desc}
+
+## 各节点原始脚本内容（可能被截断，请根据参数接口推断完整逻辑）
+{scripts_content}
+
+请生成一个完整的 bash 脚本，将以上 {total_steps} 个分析步骤串联起来，确保参数正确衔接。"""
+
+            prompt_size = len(system_prompt) + len(user_message)
+            logger.info(f"[ChatService] 开始 LLM 代码生成: {total_steps} 个步骤, prompt={prompt_size} 字符")
+
+            # 使用 300 秒超时，代码生成需要较长时间
+            codegen_timeout = max(LLM_CODEGEN_TIMEOUT, 300)
+            with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
+                _dbg.write(f"About to call httpx.post, prompt_size={prompt_size}, timeout={codegen_timeout}\n")
+            response = httpx.post(
+                f"{DASHSCOPE_API_BASE}/chat/completions",
+                headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
+                json={
+                    "model": DASHSCOPE_MODEL_NAME,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    "temperature": 0.3,
+                },
+                timeout=httpx.Timeout(codegen_timeout, connect=30.0),
+            )
+            response.raise_for_status()
+            result = response.json()
+            generated = result["choices"][0]["message"]["content"]
+
+            # 提取 bash 脚本（去掉可能的 markdown 代码块包裹）
+            if "```bash" in generated:
+                generated = generated.split("```bash", 1)[1].split("```", 1)[0]
+            elif "```" in generated:
+                generated = generated.split("```", 1)[1].split("```", 1)[0]
+
+            generated = generated.strip()
+            logger.info(f"[ChatService] LLM 代码生成完成: {len(generated)} 字符")
+            return generated
+
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"[ChatService] LLM 代码生成失败: {type(e).__name__}: {e}")
+            logger.error(tb)
+            with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
+                _dbg.write(f"EXCEPTION: {type(e).__name__}: {e}\n")
+                _dbg.write(tb + "\n")
+            return None
 
     @staticmethod
     def confirm_upload(
@@ -484,61 +669,71 @@ class ChatService:
             .order_by(Message.id.desc())
             .first()
         )
-        # 写入固定模拟脚本到宿主机 shared/ 目录
         tid = task.id
-        script = f"""#!/bin/bash
+
+        # SGE 脚本头部
+        sge_header = f"""#!/bin/bash
 #$ -N task_{tid}
 #$ -cwd
 #$ -j y
 #$ -o /shared/task_{tid}.log
+export PATH=/opt/conda/bin:$PATH
+"""
 
+        # 获取用户上传的文件，构造文件路径映射
+        upload_message = (
+            Message.where(db, task_id=task.id)
+            .filter(Message.data.like("%upload_validated%"))
+            .order_by(Message.id.desc())
+            .first()
+        )
+        file_env_lines = []
+        if upload_message:
+            try:
+                upload_data = json.loads(upload_message.data) if upload_message.data else {}
+                uploaded_files = upload_data.get("uploaded_files", [])
+                for fm in uploaded_files:
+                    original_name = fm.get("original_name", "")
+                    stored_name = fm.get("stored_name", original_name)
+                    # 上传文件已挂载到容器 /shared/ 下
+                    file_env_lines.append(f'{fm.get("label", original_name).upper().replace(" ", "_")}="/shared/{stored_name}"')
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
+        # 优先使用生成的真实代码，否则 fallback 到模拟脚本
+        generated_code = fr_message.result_content if fr_message and fr_message.result_content else ""
+
+        if generated_code:
+            script = sge_header + "\n"
+            if file_env_lines:
+                script += "# 上传文件路径\n" + "\n".join(file_env_lines) + "\n\n"
+            script += generated_code
+            logger.info(f"[ChatService] 使用生成的真实代码 (length={len(generated_code)})")
+        else:
+            script = sge_header + f"""
 echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Job Started =========="
 echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Job ID: $JOB_ID"
 echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Hostname: $(hostname)"
 echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Working directory: $(pwd)"
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Total duration: 60 seconds (12 checkpoints)"
 
 sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 1/12]  Initializing environment..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 1/4]  Initializing environment..."
 
 sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 2/12]  Loading input data..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 2/4]  Loading input data..."
 
 sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 3/12]  Validating data format..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 3/4]  Running analysis..."
 
 sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 4/12]  Running quality control..."
-
-sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 5/12]  Performing sequence alignment..."
-
-sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 6/12]  Filtering low-quality reads..."
-
-sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 7/12]  Clustering OTUs..."
-
-sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 8/12]  Assigning taxonomy..."
-
-sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 9/12]  Computing diversity indices..."
-
-sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 10/12] Generating statistics report..."
-
-sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 11/12] Rendering visualization plots..."
-
-sleep 5
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 12/12] Writing output files..."
+echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 4/4]  Writing output files..."
 
 echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Job Completed =========="
-echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Elapsed: ~60 seconds"
 """
+            logger.info(f"[ChatService] 无生成代码，使用模拟脚本")
         container_script = f"/shared/task_{tid}.sh"
-        host_script = os.path.join(os.path.dirname(__file__), "..", "..", "shared", f"task_{tid}.sh")
+        shared_dir = os.getenv("SHARED_DIR", os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "shared")))
+        host_script = os.path.join(shared_dir, f"task_{tid}.sh")
         host_script = os.path.normpath(host_script)
         with open(host_script, "w", encoding="utf-8", newline="\n") as f:
             f.write(script)
@@ -602,7 +797,8 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] Elapsed: ~60 seconds"
 
         # SGE 日志文件: task_{id}.o{qsub_id}
         log_filename = f"task_{task.id}.o{task.qsub_id}"
-        host_log = os.path.join(os.path.dirname(__file__), "..", "..", "shared", log_filename)
+        shared_dir = os.getenv("SHARED_DIR", os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "shared")))
+        host_log = os.path.join(shared_dir, log_filename)
         host_log = os.path.normpath(host_log)
         logs = ""
         completed = False
