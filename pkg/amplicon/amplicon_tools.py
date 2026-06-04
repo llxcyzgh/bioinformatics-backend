@@ -22,9 +22,10 @@ DATA_TYPE_TO_FILE_REQUIREMENT: dict[str, dict] = {
     "FASTQ_PAIR": {
         "typeId": "FASTQ_PAIR",
         "label": "双端测序原始数据",
-        "description": "R1/R2 FASTQ文件对（.fastq.gz）",
+        "description": "R1/R2 FASTQ文件对（.fastq.gz），可上传多个样本的文件",
         "extensions": [".fastq", ".fastq.gz", ".fq.gz"],
         "required": True,
+        "multiple": True,
     },
     "FASTA_SEQ": {
         "typeId": "FASTA_SEQ",
