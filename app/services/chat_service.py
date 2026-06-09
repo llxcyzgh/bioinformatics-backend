@@ -128,6 +128,30 @@ class ChatService:
         return "、".join(DATA_TYPE_NAMES.get(t, t) for t in type_ids)
 
     @staticmethod
+    def _get_previously_used_paths(db: Session, user_id: int) -> set[str]:
+        """查询当前用户历史选择过的路径，返回排序后的 tool_ids 字符串集合"""
+        user_task_ids = [t.id for t in Task.where(db, user_id=user_id).all()]
+        if not user_task_ids:
+            return set()
+
+        select_msgs = (
+            Message.where(db, type="select_path")
+            .filter(Message.task_id.in_(user_task_ids))
+            .all()
+        )
+
+        used_keys = set()
+        for msg in select_msgs:
+            try:
+                data = json.loads(msg.data) if msg.data else {}
+                tool_ids = data.get("tool_ids", [])
+                if tool_ids:
+                    used_keys.add(",".join(sorted(tool_ids)))
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return used_keys
+
+    @staticmethod
     def _route_decision(parser_result: dict, content: str, history_dicts: list[dict]) -> dict:
         """根据解析结果决定回复类型"""
         available = parser_result.get("available_inputs", [])
@@ -284,6 +308,19 @@ class ChatService:
         except Exception as e:
             logger.error(f"[ChatService] 解析/规划异常，回退到通用 AI: {e}")
             ai_response = AIService.generate_response(task.id, user_message, history)
+
+        # 标注 previously_used：对比用户历史选择过的路径
+        if ai_response.get("workflow_candidates"):
+            try:
+                candidates = json.loads(ai_response["workflow_candidates"])
+                used_keys = ChatService._get_previously_used_paths(db, user_id)
+                for c in candidates:
+                    tool_ids = [t["id"] for t in c.get("tool_chain", []) if isinstance(t, dict) and "id" in t]
+                    key = ",".join(sorted(tool_ids))
+                    c["previously_used"] = key in used_keys
+                ai_response["workflow_candidates"] = json.dumps(candidates, ensure_ascii=False)
+            except Exception as e:
+                logger.warning(f"[ChatService] previously_used 标注失败: {e}")
 
         # Save AI response
         ai_message = Message(
