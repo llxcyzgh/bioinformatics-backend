@@ -5,10 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common Commands
 
 ```bash
+# Activate venv first — system python is a Windows Store placeholder
+.venv/Scripts/activate        # Git Bash on Windows
+
 # Install dependencies
 pip install -r requirements.txt
 
-# Create/update database tables (runs migrations and seeds)
+# Create/update database tables + seed data
 python migrate_seed.py
 
 # Drop and recreate all tables (development only)
@@ -16,94 +19,57 @@ python migrate_seed.py --fresh
 
 # Start development server
 uvicorn main:app --reload
-
-# Alternative: run on specific host/port
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+No test framework is configured.
 
 ## Architecture
 
-This is a **FastAPI bioinformatics backend** following a **Laravel-style directory structure**. The architecture uses strict layering:
-
-- **Routes** (`routes/`) - API endpoint definitions, delegate to controllers
-- **Controllers** (`app/http/controllers/`) - Request handling, delegate to services
-- **Services** (`app/services/`) - Business logic layer
-- **Requests** (`app/http/requests/`) - Pydantic validation schemas
-- **Models** (`app/models/`) - SQLAlchemy ORM with Laravel-like methods
-- **Middleware** (`app/http/middleware/`) - Cross-cutting concerns (auth, etc.)
-
-### Request Flow
+FastAPI bioinformatics backend with **Laravel-style layered architecture**:
 
 ```
-HTTP Request → Route → Controller → Service → Model → Database
-                    ↓            ↓
-               Pydantic    Business Logic
-               Validation
+HTTP Request → Route (routes/) → Controller (app/http/controllers/) → Service (app/services/) → Model (app/models/) → Database
+                                    ↓
+                              Pydantic Request (app/http/requests/) for validation
 ```
+
+All routes mount under `/api` via `routes/api.py`. Static file serving at `/uploads` for uploaded files (`main.py`).
 
 ### Model Base Class
 
-All models inherit from `Model` (in `app/models/model.py`), which provides:
+All models inherit from `Model` (`app/models/model.py`), which provides:
 - Automatic timestamps (`created_at`, `updated_at`)
-- Soft delete support (`deleted_at` is an **Integer** timestamp, default `0`, not `NULL`)
-- Laravel-like query methods: `find()`, `all()`, `where()`, `with_trashed()`, `only_trashed()`
-- Laravel-like actions: `save()`, `delete()`, `force_delete()`, `restore()`
+- Soft delete (`deleted_at` is an **Integer** timestamp, default `0`, not `NULL`)
+- Laravel-like methods: `find()`, `all()`, `where()`, `with_trashed()`, `only_trashed()`, `save()`, `delete()`, `force_delete()`, `restore()`
 
-```python
-# Usage examples
-user = User.find(db, 1)           # Find by ID (excludes soft-deleted)
-users = User.all(db)              # Get all non-deleted
-User.where(db, email="x@y.com")   # Query with conditions
-user.delete(db)                   # Soft delete
-user.restore(db)                  # Restore soft-deleted
-```
+**Field conventions:** All columns must specify `nullable` and a `default`. Required fields use `nullable=False` with type-appropriate defaults (`''` for String/Text, `0` for Integer). Foreign keys use `nullable=False, default=0`.
 
-**Model field conventions:** All fields must specify `nullable` and a `default` value. Required fields use `nullable=False` with type-appropriate defaults (`''` for String/Text, `0` for Integer). Foreign keys use `nullable=False, default=0`. See `app/models/` for examples.
+**Column ordering:** Concrete models redeclare `id`, `created_at`, `updated_at`, `deleted_at` to ensure defined column order in SQLite.
 
-**Column ordering:** Concrete models explicitly redeclare `id`, `created_at`, `updated_at`, `deleted_at` (overriding the base class `@declared_attr`) to ensure columns appear in a defined order in SQLite. Follow this pattern for new models.
-
-**Serialization:** Models can override `to_dict()` for custom output — e.g., `User.to_dict()` hides `hashed_password` and includes `roles`/`permissions`; models with `DateTime` fields format them via `.isoformat()`.
+**Serialization:** Models override `to_dict()` for custom output (e.g., `User.to_dict()` hides `hashed_password`, includes `roles`/`permissions`; DateTime fields formatted via `.isoformat()`).
 
 ### Domain Model Relationships
 
 ```
 User
-├── projects (Project.user_id → users.id)
-│   └── tasks (Task.project_id → projects.id)
-│       └── messages (Message.task_id → tasks.id)
-├── tasks (Task.user_id → users.id)
-├── templates (Template.user_id → users.id)
-└── roles (M2M via UserRole)
-    └── permissions (M2M via RolePermission)
+├── projects (Project.user_id) ─── tasks (Task.project_id) ─── messages (Message.task_id)
+├── tasks (Task.user_id)
+├── templates (Template.user_id)
+└── roles (M2M via UserRole) ─── permissions (M2M via RolePermission)
 ```
 
-All ownership-aware routes enforce that users can only access their own resources (`user_id` is taken from `current_user.id` and filtered in Service queries).
+Script system: `ScriptFolder` (tree, `parent_id`) → `Script` (tools with `tool_id`, `inputs`, `outputs`, `file_path`).
 
-### RBAC Models
+### RBAC
 
-Role-Based Access Control uses three join tables:
-- `user_roles` — links User ↔ Role (many-to-many)
-- `role_permissions` — links Role ↔ Permission (many-to-many)
-- `User.to_dict()` automatically includes the user's `roles` and deduplicated `permissions`
-
-Seed data: `admin` role gets all permissions; `user` role gets create+read on projects/tasks/messages.
-
-### AI Chat System
-
-The `/api/chat/` endpoint provides an LLM-powered bioinformatics assistant:
-- Backed by **DashScope** (Alibaba Cloud) via OpenAI-compatible API (`config/llm.py`)
-- Each chat auto-creates a `Task` if `task_id` isn't provided, then appends `Message` records
-- `Message.role` is `"user"` or `"assistant"`; `Message.type` is one of `"text"`, `"path"`, `"code"`, `"file_request"`
-- `AIService` sends conversation history to the LLM with a system prompt requiring structured JSON responses
-- Falls back to placeholder responses when `DASHSCOPE_API_KEY` is missing or LLM call fails
-- Config: `DASHSCOPE_API_KEY`, `DASHSCOPE_API_BASE`, `DASHSCOPE_MODEL_NAME` in `.env`
+- `user_roles` — User ↔ Role (M2M)
+- `role_permissions` — Role ↔ Permission (M2M)
+- `User.to_dict()` automatically includes roles and deduplicated permissions
+- Seed: `admin` gets all permissions; `user` gets create+read on projects/tasks/messages
 
 ### Authentication
 
-JWT-based auth using `python-jose` and `passlib`:
-- Middleware: `app/http/middleware/auth_middleware.py` - exported as `Auth` dependency
-- Service: `app/services/auth_service.py`
-- Protected routes use: `current_user: User = Auth`
+JWT via `python-jose` + `passlib`. Protected routes use `current_user: User = Auth`:
 
 ```python
 from app.http.middleware import Auth
@@ -113,85 +79,85 @@ def protected_route(current_user: User = Auth):
     return current_user.to_dict()
 ```
 
-Login returns `{"token": "...", "user": {...}}` (field name is `token`, not `access_token`). Token expiry is 7 days (`config/auth.py`).
+Login returns `{"token": "...", "user": {...}}` (field name is `token`, not `access_token`). Token expiry is 7 days.
 
-### Adding New Features
+## Chat & Analysis Pipeline
 
-To add a new resource (e.g., "Project"):
+The core feature is an LLM-driven bioinformatics analysis assistant. The full interaction flow:
 
-1. **Model** - Create `app/models/project.py`:
-   ```python
-   from sqlalchemy import String, Integer
-   from app.models.model import Model
+1. **User sends message** → `ChatService.chat()` creates/updates Task + Message
+2. **Parse intent** → `ParserService.parse()` (LLM first via `llm_parser.py`, keyword fallback via `nl_parser.py`) extracts `available_inputs` + `goal_types`
+3. **Route decision** → Based on what's known (inputs, goals, both, neither):
+   - Neither → clarification prompt
+   - Only inputs → ask for goals
+   - Only goals → ask for data type
+   - Both → run planner
+4. **Plan workflow** → `PlannerService` calls BFS planner (`pkg/amplicon/planner.py`) to find tool chains
+5. **User confirms path** → `ChatService.confirm_path()` generates execution code via LLM, identifies required files
+6. **User uploads files** → `ChatService.confirm_upload()` validates extensions against `required_files`
+7. **Execute** → `ChatService.start_execution()` writes script to `SHARED_DIR`, runs `docker exec sge-master qsub` for SGE job submission
+8. **Monitor** → `ChatService.get_execution_logs()` reads SGE log from `SHARED_DIR`
 
-   class Project(Model):
-       __tablename__ = "projects"
-       name = Column(String, nullable=False)
-   ```
+Message types: `"text"`, `"clarification"`, `"workflow"`, `"path"`, `"code"`, `"file_request"`.
 
-2. **Service** - Create `app/services/project_service.py`:
-   ```python
-   class ProjectService:
-       @staticmethod
-       def create(name: str, db: Session):
-           project = Project(name=name)
-           return project.save(db)
-   ```
+### Amplicon Tool System (`pkg/amplicon/`)
 
-3. **Controller** - Create `app/http/controllers/project_controller.py`:
-   ```python
-   class ProjectController:
-       @staticmethod
-       def create(name: str, db: Session):
-           return ProjectService.create(name, db)
-   ```
+The analysis pipeline is built around a tool registry where each tool maps **input data types → output data types**:
 
-4. **Request** - Create `app/http/requests/project_request.py`:
-   ```python
-   class CreateProjectRequest(BaseModel):
-       name: str = Field(min_length=1)
-   ```
+- **`amplicon_tools.py`** — `ToolDef` registry (`get_all_tools()`), data type name mappings (`DATA_TYPE_NAMES`), file requirement definitions (`DATA_TYPE_TO_FILE_REQUIREMENT`), and `resolve_root_inputs()` to derive user-required uploads from a tool chain
+- **`planner.py`** — Two-phase BFS planner: Phase 1 finds core paths to intermediate states, Phase 2 attaches terminal tools. Returns up to `top_n` `WorkflowCandidate`s
+- **`nl_parser.py`** — Keyword-based fallback parser (Chinese + English keywords)
+- **`llm_parser.py`** — LLM-based parser using DashScope, includes `SYSTEM_PROMPT` (structured JSON parsing) and `CLARIFICATION_SYSTEM_PROMPT` (friendly follow-up questions)
+- **`code_templates.py`** — Shell script templates per tool ID and `generate_workflow_script()` for fallback code generation
 
-5. **Route** - Create `routes/projects.py`:
-   ```python
-   router = APIRouter(prefix="/projects", tags=["projects"])
+Tool IDs follow `amp-{short-name}` pattern (e.g., `amp-dada2`, `amp-lefse`, `amp-pca`). Categories: 数据预处理, 质量控制, 核心分析, 多样性分析, 统计检验, 可视化, 排序分析, 功能预测.
 
-   @router.post("/")
-   def create(request: CreateProjectRequest, db: Session = Depends(get_db)):
-       return ProjectController.create(request.name, db)
-   ```
+Seed data (`migrate_seed.py`) auto-populates `Script` records from `get_all_tools()`, mapping each tool to its shell script in `scripts/Amplicon/`.
 
-6. **Register** - Add to `routes/api.py`:
-   ```python
-   from routes.project import router as project_router
-   router.include_router(project_router)
-   ```
+### Script Code Generation
 
-7. **Export** - Add to appropriate `__init__.py` files
-
-8. **Migrate** - Run `python migrate_seed.py`
+When a user confirms an analysis path, `ChatService._generate_script_with_llm()` sends the tool chain's original script contents to the LLM with instructions to produce a single concatenated bash script with correct parameter passing. Falls back to simple concatenation if LLM fails. Scripts target a Docker container with SGE, using `/shared/` as the base directory.
 
 ## Configuration
 
-- Environment: `.env` (copy from `.env.example`)
-- App config: `config/app.py`
-- Database config: `config/database.py`
-- Auth config: `config/auth.py` (JWT settings)
-- LLM config: `config/llm.py` (DashScope API settings)
+| File | Purpose |
+|------|---------|
+| `config/app.py` | App name, version |
+| `config/database.py` | SQLAlchemy + SQLite (`bioflow.db`) |
+| `config/auth.py` | JWT secret, token expiry |
+| `config/llm.py` | DashScope API key, base URL, model name, parser/codegen timeouts |
+| `config/upload.py` | Upload directory (`storage/uploads`), max size, allowed extensions |
+
+### Environment Variables
+
+```
+JWT_SECRET_KEY=...
+DATABASE_URL=sqlite:///./bioflow.db
+DASHSCOPE_API_KEY=...
+DASHSCOPE_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1
+DASHSCOPE_MODEL_NAME=qwen-plus
+DASHSCOPE_VL_MODEL=qwen-vl-plus          # Vision model for image analysis
+LLM_PARSER_TIMEOUT=30                     # seconds
+LLM_CODEGEN_TIMEOUT=120                   # seconds (min 300 in practice)
+SHARED_DIR=shared                         # Docker shared volume mount point
+UPLOAD_DIR=storage/uploads
+MAX_UPLOAD_SIZE_MB=50
+```
 
 ## Database
 
-- SQLAlchemy ORM with SQLite (default)
-- Connection: `database/connection.py`
-- Sessions: Use `Depends(get_db)` dependency or `SessionLocal()`
-- All tables auto-created via `migrate_seed.py`
+SQLAlchemy ORM with SQLite. Sessions via `Depends(get_db)` or `SessionLocal()`. Tables auto-created by `migrate_seed.py`, which also runs incremental migrations (e.g., `migrate_messages_v2` adds structured columns, `migrate_tasks_v2` adds `qsub_id`/`script_path`).
 
-## Utilities
+## Adding New Features
 
-- `pkg/helpers/time_helper.py` — `get_utc_now()` (DateTime factory), `get_timestamp()` (integer timestamp for `deleted_at`)
+1. **Model** (`app/models/`) — inherit `Model`, redeclare `id`/`created_at`/`updated_at`/`deleted_at`
+2. **Service** (`app/services/`) — static methods on a class
+3. **Controller** (`app/http/controllers/`) — delegates to service
+4. **Request** (`app/http/requests/`) — Pydantic `BaseModel`
+5. **Route** (`routes/`) — `APIRouter`, register in `routes/api.py`
+6. **Migrate** — `python migrate_seed.py`
 
 ## Testing Accounts
 
-After running `migrate_seed.py`:
-- `admin@bioflow.com` / `admin123`
-- `user@bioflow.com` / `user123`
+- `admin@bioflow.com` / `admin123` — admin role, all permissions
+- `user@bioflow.com` / `user123` — user role, create+read on projects/tasks/messages

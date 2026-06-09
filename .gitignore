@@ -37,4 +37,5 @@ scripts/
 
 # Ad-hoc test scripts
 test_playwright.py
+*.log
 
