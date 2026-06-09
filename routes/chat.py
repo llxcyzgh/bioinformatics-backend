@@ -75,6 +75,8 @@ def confirm_upload(
         file_mappings=[fm.model_dump() for fm in request.file_mappings],
         user_id=current_user.id,
         db=db,
+        primer_f=request.primer_f,
+        primer_r=request.primer_r,
     )
 
 

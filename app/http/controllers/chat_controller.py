@@ -80,6 +80,8 @@ class ChatController:
         file_mappings: list[dict],
         user_id: int,
         db: Session,
+        primer_f: str = "",
+        primer_r: str = "",
     ) -> JSONResponse:
         try:
             result = ChatService.confirm_upload(
@@ -88,6 +90,8 @@ class ChatController:
                 project_id=project_id,
                 file_mappings=file_mappings,
                 user_id=user_id,
+                primer_f=primer_f,
+                primer_r=primer_r,
             )
             return JSONResponse(status_code=status.HTTP_200_OK, content=result)
         except ValueError as e:

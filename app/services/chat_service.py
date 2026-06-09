@@ -22,6 +22,7 @@ from config.upload import UPLOAD_DIR
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
 from pkg.amplicon.amplicon_tools import resolve_root_inputs
 from pkg.amplicon.code_templates import generate_workflow_script
+from pkg.amplicon.orchestrator import generate_orchestrator_script
 from app.services.script_service import ScriptService
 
 logger = logging.getLogger(__name__)
@@ -316,7 +317,7 @@ class ChatService:
         candidate_data: str,
         user_id: int,
     ) -> dict:
-        """用户确认选择分析路径 → 生成代码 + 返回必需文件"""
+        """用户确认选择分析路径 → 返回必需文件（不生成代码）"""
         task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
         logger.info(f"[ChatService] 路径确认: task={task.id}, candidate={candidate_id}")
 
@@ -333,11 +334,6 @@ class ChatService:
         tool_ids = [t["id"] for t in tool_chain if isinstance(t, dict) and "id" in t]
         explanation = candidate.get("explanation", "")
 
-        # DEBUG: 写文件跟踪执行
-        with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
-            _dbg.write(f"\n=== confirm_path called ===\n")
-            _dbg.write(f"tool_ids: {tool_ids}\n")
-
         # 确定必需文件
         required_files = resolve_root_inputs(tool_ids)
         logger.info(f"[ChatService] 必需文件: {[f['typeId'] for f in required_files]}")
@@ -353,72 +349,40 @@ class ChatService:
                 "required": True,
             })
 
-        # 生成执行代码：收集每个节点的脚本内容，交给 LLM 生成完整脚本
-        script_parts = []
-        for tid in tool_ids:
-            script_record = ScriptService.get_by_tool_id(db, tid)
-            if script_record and script_record.file_path:
-                content = ScriptService.read_script_content(script_record.file_path)
-                if content:
-                    script_parts.append({
-                        "tool_id": tid,
-                        "name": script_record.name,
-                        "category": script_record.category or "",
-                        "content": content,
-                        "inputs": script_record.inputs,
-                        "outputs": script_record.outputs,
-                    })
-
-        # DEBUG
-        with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
-            _dbg.write(f"script_parts count: {len(script_parts)}\n")
-            _dbg.write(f"tool_ids with scripts: {[s['tool_id'] for s in script_parts]}\n")
-
-        # 尝试 LLM 生成
-        generated_code = ChatService._generate_script_with_llm(
-            script_parts=script_parts,
-            tool_chain=tool_chain,
-            required_files=required_files,
-        )
-
-        # DEBUG
-        with open("codegen_debug.log", "a", encoding="utf-8") as _dbg:
-            _dbg.write(f"LLM result: {type(generated_code).__name__}, len={len(generated_code) if generated_code else 0}\n")
-
-        # fallback: LLM 失败时用简单拼接
-        if not generated_code:
-            logger.warning("[ChatService] LLM 代码生成失败，fallback 到简单拼接")
-            if script_parts:
-                generated_code = "\n\n".join(
-                    f"# ===== {s['name']} ({s['tool_id']}) =====\n{s['content']}"
-                    for s in script_parts
-                )
-            else:
-                generated_code = generate_workflow_script(tool_chain)
+        # 检查路径中是否包含需要引物的步骤
+        needs_primers = "amp-cutadapt" in tool_ids
 
         # 保存用户消息（记录选择）
+        tool_names = " → ".join(t.get("name", t.get("id", "")) for t in tool_chain)
         user_message = Message(
             task_id=task.id,
             role="user",
-            type="path",
-            content=f"确认选择分析方案: {explanation}",
-            data=candidate_data,
+            type="select_path",
+            content=f"✅ 已选择分析方案：{explanation}\n\n工具链：{tool_names}",
+            data=json.dumps({
+                "selected_path": candidate,
+                "tool_ids": tool_ids,
+                "explanation": explanation,
+            }, ensure_ascii=False),
             workflow_candidates=candidate_data,
         )
         user_message.save(db)
 
-        # 保存助手消息（代码生成结果 + 文件需求）
+        # 保存助手消息（仅文件需求，不生成代码）
         file_labels = "、".join(f["label"] for f in required_files)
-        # data 字段放前端需要的 requiredFiles（字符串数组）
         file_name_list = [f["label"] for f in required_files]
         ai_message = Message(
             task_id=task.id,
             role="assistant",
             type="file_request",
-            content=f"代码生成完成\n\n✅ 代码已生成（{len(tool_chain)}步）\n✅ 安全检查通过\n\n请上传数据文件：\n{file_labels}",
-            data=json.dumps({"requiredFiles": file_name_list}, ensure_ascii=False),
+            content=f"已确认分析路径（{len(tool_chain)}步）\n\n请上传以下数据文件：\n{file_labels}",
+            data=json.dumps({
+                "requiredFiles": file_name_list,
+                "tool_ids": tool_ids,
+                "needs_primers": needs_primers,
+            }, ensure_ascii=False),
             required_files=json.dumps(required_files, ensure_ascii=False),
-            result_content=generated_code,
+            result_content="",
             workflow_candidates=candidate_data,
         )
         ai_message.save(db)
@@ -426,6 +390,7 @@ class ChatService:
         return {
             "task": task.to_dict(),
             "message": ai_message.to_dict(),
+            "user_message": user_message.to_dict(),
         }
 
     @staticmethod
@@ -583,12 +548,14 @@ class ChatService:
         project_id: int,
         file_mappings: list[dict],
         user_id: int,
+        primer_f: str = "",
+        primer_r: str = "",
     ) -> dict:
-        """用户上传文件后校验文件类型，保存消息"""
+        """用户上传文件后校验文件类型、压缩文件完整性，然后生成编排脚本"""
         task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
         logger.info(f"[ChatService] 文件上传确认: task={task.id}, files={len(file_mappings)}")
 
-        # 找到最新的 file_request 消息，获取 required_files
+        # 找到最新的 file_request 消息，获取 required_files 和 tool_ids
         fr_message = (
             Message.where(db, task_id=task.id)
             .filter(Message.type == "file_request")
@@ -600,9 +567,26 @@ class ChatService:
 
         required_files_info = json.loads(fr_message.required_files) if fr_message.required_files else []
 
-        # 校验文件扩展名
-        errors = []
+        # 解析 file_request 的 data 获取 tool_ids
+        fr_data = json.loads(fr_message.data) if fr_message.data else {}
+        tool_ids = fr_data.get("tool_ids", [])
+
+        # 补充 file_mappings 中的 stored_name（从数据库查 uploaded file 记录）
+        enriched_mappings = []
         for fm in file_mappings:
+            stored_name = fm.get("stored_name", "")
+            if not stored_name:
+                file_record = UploadService.find(db, fm["file_id"], user_id)
+                if file_record:
+                    stored_name = file_record.stored_name
+            enriched_mappings.append({
+                **fm,
+                "stored_name": stored_name or fm.get("original_name", ""),
+            })
+
+        # ─── 校验文件扩展名 ───
+        errors = []
+        for fm in enriched_mappings:
             slot_label = fm["slot_label"]
             original_name = fm["original_name"]
             slot_info = next((rf for rf in required_files_info if rf["label"] == slot_label), None)
@@ -612,8 +596,53 @@ class ChatService:
                 if not any(lower_name.endswith(ext.lower()) for ext in allowed):
                     errors.append(f'"{slot_label}" 的文件 {original_name} 格式不正确，允许: {", ".join(allowed)}')
 
+        # ─── 校验压缩文件完整性 ───
+        for fm in enriched_mappings:
+            file_record = UploadService.find(db, fm["file_id"], user_id)
+            if file_record:
+                full_path = UploadService.get_file_path(file_record)
+                ok, err_msg = UploadService.validate_archive_integrity(full_path, fm["original_name"])
+                if not ok:
+                    errors.append(f'文件 {fm["original_name"]} 校验失败: {err_msg}')
+
         if errors:
             return {"success": False, "errors": errors}
+
+        # ─── 生成编排脚本 ───
+        candidate_data_str = fr_message.workflow_candidates or "{}"
+        try:
+            candidate = json.loads(candidate_data_str)
+            if not tool_ids:
+                tool_chain = candidate.get("tool_chain", [])
+                tool_ids = [t["id"] for t in tool_chain if isinstance(t, dict) and "id" in t]
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # 查找 metadata 文件
+        metadata_stored = ""
+        for fm in enriched_mappings:
+            if "metadata" in fm.get("slot_label", "").lower() or "样本信息" in fm.get("slot_label", ""):
+                metadata_stored = fm["stored_name"]
+
+        extra_params = {
+            "primer_f": primer_f,
+            "primer_r": primer_r,
+            "metadata_stored": metadata_stored,
+        }
+
+        generated_code = ""
+        if tool_ids:
+            try:
+                generated_code = generate_orchestrator_script(
+                    tool_ids=tool_ids,
+                    file_mappings=enriched_mappings,
+                    required_files=required_files_info,
+                    extra_params=extra_params,
+                )
+                logger.info(f"[ChatService] 编排脚本生成完成: {len(generated_code)} 字符")
+            except Exception as e:
+                logger.error(f"[ChatService] 编排脚本生成失败: {e}")
+                generated_code = f"# 编排脚本生成失败: {e}\n# tool_ids: {tool_ids}\n"
 
         # 创建用户消息
         file_names = "、".join(fm["original_name"] for fm in file_mappings)
@@ -622,16 +651,16 @@ class ChatService:
             role="user",
             type="text",
             content=f"已上传文件：{file_names}",
-            data=json.dumps({"uploaded_files": file_mappings}, ensure_ascii=False),
+            data=json.dumps({"uploaded_files": enriched_mappings}, ensure_ascii=False),
         )
         user_message.save(db)
 
-        # 创建助手消息（校验通过 + 保留代码和流程图数据）
+        # 创建助手消息（校验通过 + 生成的编排脚本）
         assistant_content = (
             "✅ 文件校验完成！\n\n"
             "• 文件格式: 正确\n"
             "• 文件完整性: 通过\n"
-            "• 数据质量: 良好\n\n"
+            "• 编排脚本: 已生成\n\n"
             "所有文件已就绪，可以开始执行分析任务。"
         )
         assistant_message = Message(
@@ -640,7 +669,7 @@ class ChatService:
             type="text",
             content=assistant_content,
             data=json.dumps({"upload_validated": True}, ensure_ascii=False),
-            result_content=fr_message.result_content,
+            result_content=generated_code,
             workflow_candidates=fr_message.workflow_candidates,
         )
         assistant_message.save(db)
@@ -662,7 +691,13 @@ class ChatService:
         task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
         logger.info(f"[ChatService] 开始执行: task={task.id}")
 
-        # 找到最新 file_request 消息，获取生成的代码
+        # 优先从 upload_validated 消息获取生成的代码，兜底从 file_request 消息获取
+        validated_message = (
+            Message.where(db, task_id=task.id)
+            .filter(Message.data.like("%upload_validated%"))
+            .order_by(Message.id.desc())
+            .first()
+        )
         fr_message = (
             Message.where(db, task_id=task.id)
             .filter(Message.type == "file_request")
@@ -681,16 +716,17 @@ export PATH=/opt/conda/bin:$PATH
 """
 
         # 获取用户上传的文件，构造文件路径映射
-        upload_message = (
+        # 优先从 upload_validated 消息的前一条用户消息获取文件列表
+        upload_user_msg = (
             Message.where(db, task_id=task.id)
-            .filter(Message.data.like("%upload_validated%"))
+            .filter(Message.role == "user", Message.type == "text", Message.data.like("%uploaded_files%"))
             .order_by(Message.id.desc())
             .first()
         )
         file_env_lines = []
-        if upload_message:
+        if upload_user_msg:
             try:
-                upload_data = json.loads(upload_message.data) if upload_message.data else {}
+                upload_data = json.loads(upload_user_msg.data) if upload_user_msg.data else {}
                 uploaded_files = upload_data.get("uploaded_files", [])
                 for fm in uploaded_files:
                     original_name = fm.get("original_name", "")
@@ -700,8 +736,12 @@ export PATH=/opt/conda/bin:$PATH
             except (json.JSONDecodeError, AttributeError):
                 pass
 
-        # 优先使用生成的真实代码，否则 fallback 到模拟脚本
-        generated_code = fr_message.result_content if fr_message and fr_message.result_content else ""
+        # 优先使用生成的真实代码
+        generated_code = ""
+        if validated_message and validated_message.result_content:
+            generated_code = validated_message.result_content
+        elif fr_message and fr_message.result_content:
+            generated_code = fr_message.result_content
 
         if generated_code:
             script = sge_header + "\n"

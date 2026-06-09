@@ -1,4 +1,6 @@
+import logging
 import os
+import subprocess
 import uuid
 from typing import Optional
 
@@ -7,7 +9,9 @@ from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from app.models.upload import UploadedFile
-from config.upload import UPLOAD_DIR, MAX_UPLOAD_SIZE_MB, ALLOWED_IMAGE_EXTENSIONS, ALLOWED_ALL_EXTENSIONS
+from config.upload import UPLOAD_DIR, MAX_UPLOAD_SIZE_MB, ALLOWED_IMAGE_EXTENSIONS, ALLOWED_ALL_EXTENSIONS, ARCHIVE_EXTENSIONS
+
+logger = logging.getLogger(__name__)
 
 
 class UploadService:
@@ -102,3 +106,31 @@ class UploadService:
         if search:
             query = query.filter(UploadedFile.original_name.ilike(f"%{search}%"))
         return query.order_by(UploadedFile.id.desc()).all()
+
+    @staticmethod
+    def validate_archive_integrity(file_path: str, original_name: str = "") -> tuple[bool, str]:
+        """
+        校验压缩文件完整性。使用 7z t 命令检测。
+        非压缩文件直接返回通过。
+        返回 (ok, error_msg)。
+        """
+        lower_name = original_name.lower() if original_name else file_path.lower()
+        is_archive = any(lower_name.endswith(ext) for ext in ARCHIVE_EXTENSIONS)
+        if not is_archive:
+            return True, ""
+
+        try:
+            result = subprocess.run(
+                ["7z", "t", file_path],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode == 0:
+                return True, ""
+            else:
+                err = (result.stderr or result.stdout or "").strip()[:200]
+                return False, f"压缩文件完整性校验失败: {err or '未知错误'}"
+        except FileNotFoundError:
+            logger.warning("7z 命令未找到，跳过压缩文件完整性校验")
+            return True, ""
+        except subprocess.TimeoutExpired:
+            return False, "压缩文件完整性校验超时（文件可能过大）"

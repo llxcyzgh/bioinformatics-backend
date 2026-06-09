@@ -16,9 +16,12 @@ class FileMappingItem(BaseModel):
     slot_label: str
     file_id: int
     original_name: str
+    stored_name: str = ""
 
 
 class ConfirmUploadRequest(BaseModel):
     task_uuid: str
     project_id: int
     file_mappings: list[FileMappingItem]
+    primer_f: str = ""
+    primer_r: str = ""
