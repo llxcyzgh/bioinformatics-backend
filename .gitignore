@@ -29,9 +29,6 @@ venv/
 Thumbs.db
 .codegraph/
 
-# Uploads
-storage/uploads/
-
 # Uploaded scripts
 # scripts/
 
