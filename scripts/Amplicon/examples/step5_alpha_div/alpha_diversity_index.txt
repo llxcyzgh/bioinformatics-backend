@@ -1,0 +1,6 @@
+Sample_Name	chao1	dominance	goods_coverage	observed_features	pielou_e	shannon	simpson
+Sample001	125.3	0.15	0.98	120	0.85	3.21	0.85
+Sample002	98.7	0.22	0.96	95	0.78	2.85	0.78
+Sample003	110.5	0.18	0.97	108	0.82	3.05	0.82
+Sample004	135.2	0.12	0.99	132	0.88	3.45	0.88
+Sample005	88.9	0.25	0.95	85	0.75	2.65	0.75

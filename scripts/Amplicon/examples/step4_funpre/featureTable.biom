@@ -1,0 +1,1 @@
+{"id":"None","format":"Biological Observation Matrix 1.0.0","datatype":"int","rows":[{"id":"ASV0"},{"id":"ASV1"}],"columns":[{"id":"D1"},{"id":"D2"}],"matrix_type":"dense","matrix_element_type":"int","data":[[10251,9932],[7446,7723]]}

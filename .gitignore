@@ -33,7 +33,7 @@ Thumbs.db
 storage/uploads/
 
 # Uploaded scripts
-scripts/
+# scripts/
 
 # Ad-hoc test scripts
 test_playwright.py
