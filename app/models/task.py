@@ -19,6 +19,7 @@ class Task(Model):
     name = Column(String, nullable=False, default='')
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, default=0)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, default=0)
+    status = Column(String, nullable=False, default='pending')
     qsub_id = Column(String, nullable=False, default='')
     script_path = Column(String, nullable=False, default='')
 
@@ -36,6 +37,7 @@ class Task(Model):
             "uuid": self.uuid,
             "name": self.name,
             "user_id": self.user_id,
+            "status": self.status,
             "qsub_id": self.qsub_id,
             "script_path": self.script_path,
             "created_at": self.created_at.isoformat() if self.created_at else None,

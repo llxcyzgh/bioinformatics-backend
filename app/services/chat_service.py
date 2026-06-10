@@ -13,6 +13,7 @@ from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from app.models import Task, Message
+from app.services.execution_service import ExecutionService
 from app.services.ai_service import AIService
 from app.services.parser_service import ParserService
 from app.services.planner_service import PlannerService
@@ -726,7 +727,25 @@ class ChatService:
     ) -> dict:
         """提交 qsub 任务执行"""
         task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
+
+        if task.status in ("running", "completed"):
+            raise ValueError(f"任务当前状态为 {task.status}，不可重复执行")
+
         logger.info(f"[ChatService] 开始执行: task={task.id}")
+
+        # 获取 tool_ids（从 select_path 消息）
+        select_msg = (
+            Message.where(db, task_id=task.id)
+            .filter(Message.type == "select_path")
+            .order_by(Message.id.desc())
+            .first()
+        )
+        tool_ids = []
+        if select_msg and select_msg.data:
+            try:
+                tool_ids = json.loads(select_msg.data).get("tool_ids", [])
+            except (json.JSONDecodeError, TypeError):
+                pass
 
         # 优先从 upload_validated 消息获取生成的代码，兜底从 file_request 消息获取
         validated_message = (
@@ -753,7 +772,6 @@ export PATH=/opt/conda/bin:$PATH
 """
 
         # 获取用户上传的文件，构造文件路径映射
-        # 优先从 upload_validated 消息的前一条用户消息获取文件列表
         upload_user_msg = (
             Message.where(db, task_id=task.id)
             .filter(Message.role == "user", Message.type == "text", Message.data.like("%uploaded_files%"))
@@ -768,7 +786,6 @@ export PATH=/opt/conda/bin:$PATH
                 for fm in uploaded_files:
                     original_name = fm.get("original_name", "")
                     stored_name = fm.get("stored_name", original_name)
-                    # 上传文件已挂载到容器 /shared/ 下
                     file_env_lines.append(f'{fm.get("label", original_name).upper().replace(" ", "_")}="/shared/{stored_name}"')
             except (json.JSONDecodeError, AttributeError):
                 pass
@@ -808,12 +825,16 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] [Step 4/4]  Writing outp
 echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Job Completed =========="
 """
             logger.info(f"[ChatService] 无生成代码，使用模拟脚本")
+
         container_script = f"/shared/task_{tid}.sh"
         shared_dir = os.getenv("SHARED_DIR", os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "shared")))
         host_script = os.path.join(shared_dir, f"task_{tid}.sh")
         host_script = os.path.normpath(host_script)
         with open(host_script, "w", encoding="utf-8", newline="\n") as f:
             f.write(script)
+
+        # 创建 Execution 记录
+        execution = ExecutionService.create(db, tid, tool_ids, script, container_script)
 
         # 通过 docker exec 执行 qsub
         qsub_cmd = f"source /opt/sge/default/common/settings.sh && qsub -o /shared {container_script}"
@@ -828,20 +849,19 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
 
         if result.returncode != 0:
             error_msg = result.stderr.strip() or output
+            ExecutionService.fail(db, execution.id, f"qsub 提交失败: {error_msg}")
             raise ValueError(f"qsub 提交失败: {error_msg}")
 
         # 解析 job ID
         match = re.search(r"Your job (\d+)", output)
         if not match:
+            ExecutionService.fail(db, execution.id, f"无法解析 qsub 返回: {output}")
             raise ValueError(f"无法解析 qsub 返回: {output}")
 
         qsub_id = match.group(1)
         logger.info(f"[ChatService] 任务已提交, qsub_id={qsub_id}")
 
-        # 更新 Task
-        task.qsub_id = qsub_id
-        task.script_path = container_script
-        task.save(db)
+        ExecutionService.start(db, execution.id, qsub_id)
 
         # 创建助手消息
         ai_message = Message(
@@ -849,13 +869,14 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
             role="assistant",
             type="text",
             content=f"任务已提交，Job ID: {qsub_id}\n\n正在执行分析脚本，请等待日志输出...",
-            data=json.dumps({"execution_logs": True, "qsub_id": qsub_id}, ensure_ascii=False),
+            data=json.dumps({"execution_logs": True, "qsub_id": qsub_id, "execution_id": execution.id}, ensure_ascii=False),
         )
         ai_message.save(db)
 
         return {
             "task": task.to_dict(),
             "message": ai_message.to_dict(),
+            "execution": execution.to_dict(),
             "qsub_id": qsub_id,
         }
 
@@ -869,11 +890,13 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
         task = Task.where(db, uuid=task_uuid).first()
         if not task or task.user_id != user_id:
             raise ValueError("Task not found")
-        if not task.qsub_id:
-            return {"logs": "", "completed": False, "qsub_id": ""}
+
+        execution = ExecutionService.get_latest(db, task.id)
+        if not execution or not execution.qsub_id:
+            return {"logs": "", "completed": False, "qsub_id": "", "status": task.status}
 
         # SGE 日志文件: task_{id}.o{qsub_id}
-        log_filename = f"task_{task.id}.o{task.qsub_id}"
+        log_filename = f"task_{task.id}.o{execution.qsub_id}"
         shared_dir = os.getenv("SHARED_DIR", os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "shared")))
         host_log = os.path.join(shared_dir, log_filename)
         host_log = os.path.normpath(host_log)
@@ -884,9 +907,11 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
             try:
                 with open(host_log, "r", encoding="utf-8", errors="replace") as f:
                     logs = f.read()
-                if "Job Completed" in logs:
+                if "Job Completed" in logs and execution.status == "running":
                     completed = True
-                    # 更新执行消息的 data，将日志内容持久化
+                    ExecutionService.complete(db, execution.id, logs)
+
+                    # 更新执行消息的 data
                     exec_msg = (
                         Message.where(db, task_id=task.id)
                         .filter(Message.type == "text")
@@ -903,6 +928,8 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
                                 exec_msg.save(db)
                         except (json.JSONDecodeError, TypeError):
                             pass
+                elif execution.status in ("completed", "failed"):
+                    completed = execution.status == "completed"
             except Exception as e:
                 logger.warning(f"[ChatService] 读取日志失败: {e}")
                 logs = f"读取日志失败: {e}"
@@ -910,5 +937,104 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
         return {
             "logs": logs,
             "completed": completed,
-            "qsub_id": task.qsub_id,
+            "qsub_id": execution.qsub_id,
+            "status": task.status,
+            "execution": execution.to_dict(),
         }
+
+    @staticmethod
+    def retry_execution(
+        db: Session,
+        task_uuid: str,
+        project_id: int,
+        user_id: int,
+    ) -> dict:
+        """一键重试：复用上次执行的脚本重新提交"""
+        task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
+
+        if task.status not in ("failed", "cancelled"):
+            raise ValueError(f"任务当前状态为 {task.status}，不可重试")
+
+        last_execution = ExecutionService.get_latest(db, task.id)
+        if not last_execution:
+            raise ValueError("没有找到执行记录")
+
+        tool_ids = []
+        try:
+            tool_ids = json.loads(last_execution.tool_ids) if last_execution.tool_ids else []
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        tid = task.id
+        script = last_execution.script_content
+        container_script = last_execution.script_path
+
+        shared_dir = os.getenv("SHARED_DIR", os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "shared")))
+        host_script = os.path.join(shared_dir, f"task_{tid}.sh")
+        host_script = os.path.normpath(host_script)
+        with open(host_script, "w", encoding="utf-8", newline="\n") as f:
+            f.write(script)
+
+        execution = ExecutionService.create(db, tid, tool_ids, script, container_script)
+
+        qsub_cmd = f"source /opt/sge/default/common/settings.sh && qsub -o /shared {container_script}"
+        logger.info(f"[ChatService] 重试执行: {qsub_cmd}")
+
+        result = subprocess.run(
+            ["docker", "exec", "sge-master", "bash", "-c", qsub_cmd],
+            capture_output=True, text=True, timeout=30,
+        )
+        output = result.stdout.strip()
+
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() or output
+            ExecutionService.fail(db, execution.id, f"qsub 提交失败: {error_msg}")
+            raise ValueError(f"qsub 提交失败: {error_msg}")
+
+        match = re.search(r"Your job (\d+)", output)
+        if not match:
+            ExecutionService.fail(db, execution.id, f"无法解析 qsub 返回: {output}")
+            raise ValueError(f"无法解析 qsub 返回: {output}")
+
+        qsub_id = match.group(1)
+        ExecutionService.start(db, execution.id, qsub_id)
+
+        ai_message = Message(
+            task_id=task.id,
+            role="assistant",
+            type="text",
+            content=f"任务已重新提交，Job ID: {qsub_id}\n\n正在执行分析脚本，请等待日志输出...",
+            data=json.dumps({"execution_logs": True, "qsub_id": qsub_id, "execution_id": execution.id, "retry": True}, ensure_ascii=False),
+        )
+        ai_message.save(db)
+
+        return {
+            "task": task.to_dict(),
+            "message": ai_message.to_dict(),
+            "execution": execution.to_dict(),
+            "qsub_id": qsub_id,
+        }
+
+    @staticmethod
+    def reupload_and_execute(
+        db: Session,
+        task_uuid: str,
+        project_id: int,
+        file_mappings: list[dict],
+        user_id: int,
+        primer_f: str = "",
+        primer_r: str = "",
+    ) -> dict:
+        """重新上传文件并重新执行"""
+        task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
+
+        if task.status not in ("failed", "cancelled"):
+            raise ValueError(f"任务当前状态为 {task.status}，不可重新上传执行")
+
+        # 复用 confirm_upload 的校验和脚本生成逻辑
+        result = ChatService.confirm_upload(db, task_uuid, project_id, file_mappings, user_id, primer_f, primer_r)
+        if not result.get("success", True):
+            return result
+
+        # 然后直接执行
+        return ChatService.start_execution(db, task_uuid, project_id, user_id)

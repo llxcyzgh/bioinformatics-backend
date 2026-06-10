@@ -255,6 +255,7 @@ def migrate():
     Base.metadata.create_all(bind=engine)
     migrate_messages_v2()
     migrate_tasks_v2()
+    migrate_tasks_v3()
     print("Database tables created successfully!")
 
 
@@ -355,6 +356,27 @@ def migrate_tasks_v2():
                 pass
             else:
                 raise
+
+    conn.commit()
+    conn.close()
+
+
+def migrate_tasks_v3():
+    """Add status column to tasks table."""
+    import sqlite3
+    from config.database import DATABASE_URL
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
+        print("  Added column tasks.status")
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" in str(e):
+            pass
+        else:
+            raise
 
     conn.commit()
     conn.close()

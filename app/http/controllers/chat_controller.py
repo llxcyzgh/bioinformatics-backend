@@ -139,3 +139,45 @@ class ChatController:
             msg = str(e)
             code = status.HTTP_404_NOT_FOUND if "not found" in msg.lower() else status.HTTP_400_BAD_REQUEST
             return JSONResponse(status_code=code, content={"detail": msg})
+
+    @staticmethod
+    def retry_execution(
+        task_uuid: str,
+        project_id: int,
+        user_id: int,
+        db: Session,
+    ) -> JSONResponse:
+        try:
+            result = ChatService.retry_execution(
+                db=db,
+                task_uuid=task_uuid,
+                project_id=project_id,
+                user_id=user_id,
+            )
+            return JSONResponse(status_code=status.HTTP_200_OK, content=result)
+        except ValueError as e:
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)})
+
+    @staticmethod
+    def reupload_and_execute(
+        task_uuid: str,
+        project_id: int,
+        file_mappings: list[dict],
+        user_id: int,
+        db: Session,
+        primer_f: str = "",
+        primer_r: str = "",
+    ) -> JSONResponse:
+        try:
+            result = ChatService.reupload_and_execute(
+                db=db,
+                task_uuid=task_uuid,
+                project_id=project_id,
+                file_mappings=file_mappings,
+                user_id=user_id,
+                primer_f=primer_f,
+                primer_r=primer_r,
+            )
+            return JSONResponse(status_code=status.HTTP_200_OK, content=result)
+        except ValueError as e:
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)})

@@ -110,3 +110,34 @@ def execution_logs(
         user_id=current_user.id,
         db=db,
     )
+
+
+@router.post("/retry-execution")
+def retry_execution(
+    request: StartExecutionRequest,
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    return ChatController.retry_execution(
+        task_uuid=request.task_uuid,
+        project_id=request.project_id,
+        user_id=current_user.id,
+        db=db,
+    )
+
+
+@router.post("/reupload-and-execute")
+def reupload_and_execute(
+    request: ConfirmUploadRequest,
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    return ChatController.reupload_and_execute(
+        task_uuid=request.task_uuid,
+        project_id=request.project_id,
+        file_mappings=[fm.model_dump() for fm in request.file_mappings],
+        user_id=current_user.id,
+        db=db,
+        primer_f=request.primer_f,
+        primer_r=request.primer_r,
+    )
