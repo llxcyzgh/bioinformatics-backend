@@ -60,6 +60,11 @@ class UploadService:
         with open(full_path, "wb") as f:
             f.write(content)
 
+        ok, err_msg = UploadService.validate_archive_integrity(full_path, file.filename)
+        if not ok:
+            os.remove(full_path)
+            raise ValueError(f"文件已上传但校验失败，请检查文件是否损坏后重新上传。{err_msg}")
+
         relative_path = os.path.join(str(user_id), stored_name)
 
         record = UploadedFile(
