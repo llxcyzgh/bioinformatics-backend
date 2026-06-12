@@ -1,0 +1,6226 @@
+{
+  "nodes": [
+    {
+      "id": "amp-import-fasta",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-import-fasta",
+        "name": "import_fasta",
+        "title": "step0_import_fasta",
+        "description": "将 FASTA 序列文件导入为 QIIME2 格式，用于后续 QIIME2 分析",
+        "scope": "16S/18S/ITS 扩增子测序、任何 QIIME2 分析前置步骤",
+        "estimated_time": 0,
+        "quotation_score": 0,
+        "category": "数据预处理",
+        "script_path": "Amplicon/scripts/step0_import_fasta.sh"
+      }
+    },
+    {
+      "id": "amp-cutadapt",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-cutadapt",
+        "name": "cutadapt",
+        "title": "step1_cutadapt",
+        "description": "从双端测序 FASTQ 数据中去除引物序列，支持多样本并行处理",
+        "scope": "16S/18S/ITS 扩增子测序、未去除引物的双端测序数据",
+        "estimated_time": 0.5,
+        "quotation_score": 0.9,
+        "category": "数据预处理",
+        "script_path": "Amplicon/scripts/step1_cutadapt.sh"
+      }
+    },
+    {
+      "id": "amp-flash",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-flash",
+        "name": "flash",
+        "title": "step1_flash",
+        "description": "快速重叠双端测序序列拼接工具，将配对的 R1 和 R2 reads 拼接成完整的扩增子序列",
+        "scope": "16S/18S/ITS 扩增子测序、需要序列拼接的双端测序数据",
+        "estimated_time": 0.5,
+        "quotation_score": 0.9,
+        "category": "数据预处理",
+        "script_path": "Amplicon/scripts/step1_flash.sh"
+      }
+    },
+    {
+      "id": "amp-frags-qc",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-frags-qc",
+        "name": "frags_qc",
+        "title": "step2_frags_qc",
+        "description": "扩增子序列质量控制流程，包含质量过滤、去嵌合体、序列长度分布分析等步骤",
+        "scope": "16S/18S/ITS 扩增子测序、宏基因组测序",
+        "estimated_time": 0.5,
+        "quotation_score": 0.9,
+        "category": "质量控制",
+        "script_path": "Amplicon/scripts/step2_frags_qc.sh"
+      }
+    },
+    {
+      "id": "amp-alpha-data",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-alpha-data",
+        "name": "alpha_data",
+        "title": "step3_alpha_data",
+        "description": "Alpha 多样性指数计算与稀化曲线分析，评估样本内物种多样性",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组多样性分析",
+        "estimated_time": 1.0,
+        "quotation_score": 1.8,
+        "category": "多样性分析",
+        "script_path": "Amplicon/scripts/step3_alpha_data.sh"
+      }
+    },
+    {
+      "id": "amp-beta-data",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-beta-data",
+        "name": "beta_data",
+        "title": "step3_beta_data",
+        "description": "Beta 多样性分析，计算样本间差异，生成 PCoA 排序图和 Emperor 交互式可视化",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组群落结构比较分析",
+        "estimated_time": 1.0,
+        "quotation_score": 1.8,
+        "category": "多样性分析",
+        "script_path": "Amplicon/scripts/step3_beta_data.sh"
+      }
+    },
+    {
+      "id": "amp-dada2",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-dada2",
+        "name": "dada2",
+        "title": "step3_dada2",
+        "description": "基于错误模型的扩增子序列变异（ASV）推断工具，通过去噪算法生成高分辨率的生物序列变异体",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组多样性分析",
+        "estimated_time": 8.0,
+        "quotation_score": 14.4,
+        "category": "核心分析",
+        "script_path": "Amplicon/scripts/step3_dada2.sh"
+      }
+    },
+    {
+      "id": "amp-feature-tables",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-feature-tables",
+        "name": "feature_tables",
+        "title": "step3_feature_tables",
+        "description": "构建包含物种注释信息的 ASV 特征表，生成标准化格式用于下游分析",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组组成分析",
+        "estimated_time": 1.5,
+        "quotation_score": 2.7,
+        "category": "核心分析",
+        "script_path": "Amplicon/scripts/step3_feature_tables.sh"
+      }
+    },
+    {
+      "id": "amp-genus-tree",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-genus-tree",
+        "name": "genus_tree",
+        "title": "step3_genus_tree",
+        "description": "基于属水平 Top100 优势物种构建进化树，展示优势菌属的系统发育关系与丰度分布",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组优势物种进化分析",
+        "estimated_time": 2.0,
+        "quotation_score": 3.6,
+        "category": "可视化",
+        "script_path": "Amplicon/scripts/step3_genus_tree.sh"
+      }
+    },
+    {
+      "id": "amp-phylogeny",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-phylogeny",
+        "name": "phylogeny",
+        "title": "step3_phylogeny",
+        "description": "基于 ASV 代表序列构建系统发育树，用于 Beta 多样性分析和进化关系研究",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组系统发育分析",
+        "estimated_time": 3.0,
+        "quotation_score": 5.4,
+        "category": "核心分析",
+        "script_path": "Amplicon/scripts/step3_phylogeny.sh"
+      }
+    },
+    {
+      "id": "amp-table-stats",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-table-stats",
+        "name": "table_stats",
+        "title": "step3_table_stats",
+        "description": "ASV 特征表均一化处理，计算各分类层级相对丰度",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组组成分析",
+        "estimated_time": 0.5,
+        "quotation_score": 0.9,
+        "category": "核心分析",
+        "script_path": "Amplicon/scripts/step3_table_stats.sh"
+      }
+    },
+    {
+      "id": "amp-taxonomy",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-taxonomy",
+        "name": "taxonomy",
+        "title": "step3_taxonomy",
+        "description": "基于 VSEARCH 的物种注释，将 ASV 代表序列与参考数据库比对得到分类学信息",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组物种注释",
+        "estimated_time": 2.0,
+        "quotation_score": 3.6,
+        "category": "核心分析",
+        "script_path": "Amplicon/scripts/step3_taxonomy.sh"
+      }
+    },
+    {
+      "id": "amp-top-species",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-top-species",
+        "name": "top_species",
+        "title": "step3_top_species",
+        "description": "筛选各分类层级 Top10 物种，绘制相对丰度柱状图",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组物种组成可视化",
+        "estimated_time": 0.5,
+        "quotation_score": 0.9,
+        "category": "可视化",
+        "script_path": "Amplicon/scripts/step3_top_species.sh"
+      }
+    },
+    {
+      "id": "amp-upgma",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-upgma",
+        "name": "upgma",
+        "title": "step3_upgma",
+        "description": "基于 Unweighted/Weighted UniFrac 距离矩阵构建 UPGMA 系统发育树，展示样本间的系统发育关系",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组 Beta 多样性分析",
+        "estimated_time": 1.5,
+        "quotation_score": 2.7,
+        "category": "多样性分析",
+        "script_path": "Amplicon/scripts/step3_upgma.sh"
+      }
+    },
+    {
+      "id": "amp-catecomp",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-catecomp",
+        "name": "catecomp",
+        "title": "step4_catecomp",
+        "description": "分类比较统计检验，包括 ANOSIM、MRPP、Adonis、AMOVA 等多种统计方法",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组 Beta 多样性统计检验",
+        "estimated_time": 1.0,
+        "quotation_score": 1.8,
+        "category": "统计检验",
+        "script_path": "Amplicon/scripts/step4_catecomp.sh"
+      }
+    },
+    {
+      "id": "amp-funpre",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-funpre",
+        "name": "funpre (PICRUSt2)",
+        "title": "step4_funpre",
+        "description": "PICRUSt2 功能预测，基于 16S 序列预测功能基因和代谢通路，支持 TSV/BIOM 格式自动转换",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组功能预测",
+        "estimated_time": 2.0,
+        "quotation_score": 3.6,
+        "category": "功能预测",
+        "script_path": "Amplicon/scripts/step4_funpre.sh"
+      }
+    },
+    {
+      "id": "amp-krona",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-krona",
+        "name": "krona",
+        "title": "step4_krona",
+        "description": "Krona 交互式层级图表，可视化展示样本物种组成和丰度分布",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组物种组成可视化",
+        "estimated_time": 0.5,
+        "quotation_score": 0.9,
+        "category": "可视化",
+        "script_path": "Amplicon/scripts/step4_krona.sh"
+      }
+    },
+    {
+      "id": "amp-lefse",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-lefse",
+        "name": "lefse",
+        "title": "step4_lefse",
+        "description": "LEfSe（Linear Discriminant Analysis Effect Size）分析，识别组间具有统计学差异的生物标志物",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组生物标志物筛选",
+        "estimated_time": 2.0,
+        "quotation_score": 3.6,
+        "category": "统计检验",
+        "script_path": "Amplicon/scripts/step4_lefse.sh"
+      }
+    },
+    {
+      "id": "amp-metastat",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-metastat",
+        "name": "metastat",
+        "title": "step4_metastat",
+        "description": "MetaStat 分析，基于 F 检验和 Benjamini-Hochberg 校正识别组间显著差异物种",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组差异物种筛选",
+        "estimated_time": 1.5,
+        "quotation_score": 2.7,
+        "category": "统计检验",
+        "script_path": "Amplicon/scripts/step4_metastat.sh"
+      }
+    },
+    {
+      "id": "amp-network",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-network",
+        "name": "network",
+        "title": "step4_network",
+        "description": "基于物种相对丰度构建微生物共现网络，识别物种间相互作用关系",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组网络分析",
+        "estimated_time": 3.0,
+        "quotation_score": 5.4,
+        "category": "可视化",
+        "script_path": "Amplicon/scripts/step4_network.sh"
+      }
+    },
+    {
+      "id": "amp-network3d",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-network3d",
+        "name": "network3d",
+        "title": "step4_network3d",
+        "description": "基于物种相对丰度构建 3D 微生物网络，可视化展示物种间相互作用关系",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组 3D 网络可视化",
+        "estimated_time": 2.0,
+        "quotation_score": 3.6,
+        "category": "可视化",
+        "script_path": "Amplicon/scripts/step4_network3d.sh"
+      }
+    },
+    {
+      "id": "amp-otutree",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-otutree",
+        "name": "otutree",
+        "title": "step4_otutree",
+        "description": "基于 UPGMA 树和 Top10 物种丰度绘制带丰度信息的进化树",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组物种进化关系可视化",
+        "estimated_time": 1.5,
+        "quotation_score": 2.7,
+        "category": "可视化",
+        "script_path": "Amplicon/scripts/step4_otutree.sh"
+      }
+    },
+    {
+      "id": "amp-randomforest",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-randomforest",
+        "name": "random_forest",
+        "title": "step4_randomforest",
+        "description": "随机森林分析，识别组间差异物种并评估分类性能（AUC 曲线）",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组生物标志物筛选",
+        "estimated_time": 2.5,
+        "quotation_score": 4.5,
+        "category": "统计检验",
+        "script_path": "Amplicon/scripts/step4_randomforest.sh"
+      }
+    },
+    {
+      "id": "amp-simper",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-simper",
+        "name": "simper",
+        "title": "step4_simper",
+        "description": "SIMPER（Similarity Percentage）分析，识别组间差异贡献最大的物种",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组差异物种筛选",
+        "estimated_time": 1.0,
+        "quotation_score": 1.8,
+        "category": "统计检验",
+        "script_path": "Amplicon/scripts/step4_simper.sh"
+      }
+    },
+    {
+      "id": "amp-taxasummary",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-taxasummary",
+        "name": "taxasummary",
+        "title": "step4_taxasummary",
+        "description": "基于相对丰度表绘制物种组成热图，展示各分类层级的物种分布",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组物种组成可视化",
+        "estimated_time": 0.5,
+        "quotation_score": 0.9,
+        "category": "可视化",
+        "script_path": "Amplicon/scripts/step4_taxasummary.sh"
+      }
+    },
+    {
+      "id": "amp-taxasummary-group",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-taxasummary-group",
+        "name": "taxasummary_group",
+        "title": "step4_taxasummary_group",
+        "description": "基于分组相对丰度表绘制物种组成热图，展示各分类层级的分组物种分布",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组物种组成可视化",
+        "estimated_time": 0.5,
+        "quotation_score": 0.9,
+        "category": "可视化",
+        "script_path": "Amplicon/scripts/step4_taxasummary_group.sh"
+      }
+    },
+    {
+      "id": "amp-ternary",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-ternary",
+        "name": "ternary",
+        "title": "step4_ternary",
+        "description": "三元相图分析，可视化展示三个分组间的物种组成分布",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组三组比较分析",
+        "estimated_time": 0.5,
+        "quotation_score": 0.9,
+        "category": "可视化",
+        "script_path": "Amplicon/scripts/step4_ternary.sh"
+      }
+    },
+    {
+      "id": "amp-ttest",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-ttest",
+        "name": "ttest",
+        "title": "step4_ttest",
+        "description": "T 检验和 Wilcoxon 秩和检验，识别组间具有显著差异的物种",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组差异物种筛选",
+        "estimated_time": 1.0,
+        "quotation_score": 1.8,
+        "category": "统计检验",
+        "script_path": "Amplicon/scripts/step4_ttest.sh"
+      }
+    },
+    {
+      "id": "amp-venn",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-venn",
+        "name": "venn",
+        "title": "step4_venn",
+        "description": "基于 ASV/OTU 丰度表绘制维恩图，展示不同样本或分组间的共有和特有物种分布",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组物种组成比较分析",
+        "estimated_time": 0.5,
+        "quotation_score": 0.9,
+        "category": "可视化",
+        "script_path": "Amplicon/scripts/step4_venn.sh"
+      }
+    },
+    {
+      "id": "amp-alpha-div",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-alpha-div",
+        "name": "alpha_div",
+        "title": "step5_alpha_div",
+        "description": "Alpha 多样性差异分析，包括 ANOVA 检验和 Beeswarm 图可视化",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组 Alpha 多样性差异比较",
+        "estimated_time": 1.0,
+        "quotation_score": 1.8,
+        "category": "多样性分析",
+        "script_path": "Amplicon/scripts/step5_alpha_div.sh"
+      }
+    },
+    {
+      "id": "amp-alpha-rarefaction",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-alpha-rarefaction",
+        "name": "alpha_rarefaction",
+        "title": "step5_alpha_rarefaction",
+        "description": "Alpha 多样性稀化曲线分析，包括 Rank Abundance 曲线和 Observed Features 稀化曲线",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组 Alpha 多样性分析",
+        "estimated_time": 1.5,
+        "quotation_score": 2.7,
+        "category": "多样性分析",
+        "script_path": "Amplicon/scripts/step5_alpha_rarefaction.sh"
+      }
+    },
+    {
+      "id": "amp-beta-div",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-beta-div",
+        "name": "beta_div",
+        "title": "step5_beta_div",
+        "description": "Beta 多样性差异分析，基于 UniFrac 距离矩阵进行组间差异统计检验",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组 Beta 多样性差异比较",
+        "estimated_time": 2.0,
+        "quotation_score": 3.6,
+        "category": "多样性分析",
+        "script_path": "Amplicon/scripts/step5_beta_div.sh"
+      }
+    },
+    {
+      "id": "amp-dca",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-dca",
+        "name": "dca",
+        "title": "step5_dca",
+        "description": "DCA（Detrended Correspondence Analysis）去趋势对应分析，展示样本间的群落结构差异",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组 Beta 多样性排序分析",
+        "estimated_time": 1.0,
+        "quotation_score": 1.8,
+        "category": "排序分析",
+        "script_path": "Amplicon/scripts/step5_dca.sh"
+      }
+    },
+    {
+      "id": "amp-nmds",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-nmds",
+        "name": "nmds",
+        "title": "step5_nmds",
+        "description": "NMDS（Non-metric Multidimensional Scaling）非度量多维尺度分析，展示样本间的群落结构差异",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组 Beta 多样性排序分析",
+        "estimated_time": 1.5,
+        "quotation_score": 2.7,
+        "category": "排序分析",
+        "script_path": "Amplicon/scripts/step5_nmds.sh"
+      }
+    },
+    {
+      "id": "amp-pca",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-pca",
+        "name": "pca",
+        "title": "step5_pca",
+        "description": "PCA（Principal Component Analysis）主成分分析，展示样本间的群落结构差异",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组 Beta 多样性排序分析",
+        "estimated_time": 1.0,
+        "quotation_score": 1.8,
+        "category": "排序分析",
+        "script_path": "Amplicon/scripts/step5_pca.sh"
+      }
+    },
+    {
+      "id": "amp-pcoa",
+      "label": "Tool",
+      "properties": {
+        "id": "amp-pcoa",
+        "name": "pcoa",
+        "title": "step5_pcoa",
+        "description": "PCoA（Principal Co-ordinates Analysis）主坐标分析，基于 UniFrac 距离展示样本间的群落结构差异",
+        "scope": "16S/18S/ITS 扩增子测序、微生物组 Beta 多样性排序分析",
+        "estimated_time": 1.5,
+        "quotation_score": 2.7,
+        "category": "排序分析",
+        "script_path": "Amplicon/scripts/step5_pcoa.sh"
+      }
+    },
+    {
+      "id": "io-FASTA序列文件",
+      "label": "IO",
+      "properties": {
+        "description": "FASTA 序列文件",
+        "filenames": [
+          "sequences.fasta"
+        ],
+        "formats": [
+          "FASTA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": []
+      }
+    },
+    {
+      "id": "io-QIIME2格式序列文件",
+      "label": "IO",
+      "properties": {
+        "description": "QIIME2 格式序列文件",
+        "filenames": [
+          "featureSeqs.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": []
+      }
+    },
+    {
+      "id": "io-前向测序文件_双端_",
+      "label": "IO",
+      "properties": {
+        "description": "前向测序文件 (双端)",
+        "filenames": [
+          "${sample}.R1.fastq.gz"
+        ],
+        "formats": [
+          "FASTQ.GZ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step1_cutadapt/CKM031.R1.fastq.gz)"
+        ]
+      }
+    },
+    {
+      "id": "io-反向测序文件_双端_",
+      "label": "IO",
+      "properties": {
+        "description": "反向测序文件 (双端)",
+        "filenames": [
+          "${sample}.R2.fastq.gz",
+          "${sample}_R2.fastq.gz"
+        ],
+        "formats": [
+          "FASTQ.GZ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step1_cutadapt/CKM031.R2.fastq.gz)",
+          "(${AMPLICON_ROOT}/examples/step1_flash/CKM031_R2.fastq.gz)"
+        ]
+      }
+    },
+    {
+      "id": "io-去除引物后的前向fastq数据",
+      "label": "IO",
+      "properties": {
+        "description": "去除引物后的前向 fastq 数据",
+        "filenames": [
+          "${sample}.cutadapt.R1.fastq.gz"
+        ],
+        "formats": [
+          "FASTQ.GZ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-去除引物后的反向fastq数据",
+      "label": "IO",
+      "properties": {
+        "description": "去除引物后的反向 fastq 数据",
+        "filenames": [
+          "${sample}.cutadapt.R2.fastq.gz"
+        ],
+        "formats": [
+          "FASTQ.GZ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-正向测序文件_双端_",
+      "label": "IO",
+      "properties": {
+        "description": "正向测序文件 (双端)",
+        "filenames": [
+          "${sample}_R1.fastq.gz"
+        ],
+        "formats": [
+          "FASTQ.GZ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step1_flash/CKM031_R1.fastq.gz)"
+        ]
+      }
+    },
+    {
+      "id": "io-成功拼接的序列",
+      "label": "IO",
+      "properties": {
+        "description": "成功拼接的序列",
+        "filenames": [
+          "${sample}.out.extendedFrags.fastq"
+        ],
+        "formats": [
+          "FASTQ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-未拼接的正向序列",
+      "label": "IO",
+      "properties": {
+        "description": "未拼接的正向序列",
+        "filenames": [
+          "${sample}.notCombined_1.fastq"
+        ],
+        "formats": [
+          "FASTQ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-未拼接的反向序列",
+      "label": "IO",
+      "properties": {
+        "description": "未拼接的反向序列",
+        "filenames": [
+          "${sample}.notCombined_2.fastq"
+        ],
+        "formats": [
+          "FASTQ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-拼接过程日志",
+      "label": "IO",
+      "properties": {
+        "description": "拼接过程日志",
+        "filenames": [
+          "${sample}.flash.log"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "通用"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-FLASH拼接后的序列文件",
+      "label": "IO",
+      "properties": {
+        "description": "FLASH 拼接后的序列文件",
+        "filenames": [
+          "${sample}.extendedFrags.fastq"
+        ],
+        "formats": [
+          "FASTQ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step2_frags_qc/D1.extendedFrags.fastq.gz)"
+        ]
+      }
+    },
+    {
+      "id": "io-质控后序列",
+      "label": "IO",
+      "properties": {
+        "description": "质控后序列",
+        "filenames": [
+          "${sample}.fastq"
+        ],
+        "formats": [
+          "FASTQ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-质控后核酸序列",
+      "label": "IO",
+      "properties": {
+        "description": "质控后核酸序列",
+        "filenames": [
+          "${sample}.fna"
+        ],
+        "formats": [
+          "FNA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-fastp质控统计信息",
+      "label": "IO",
+      "properties": {
+        "description": "fastp 质控统计信息",
+        "filenames": [
+          "${sample}.json"
+        ],
+        "formats": [
+          "JSON"
+        ],
+        "omics": [
+          "通用"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-fastp质控报告_可视化_",
+      "label": "IO",
+      "properties": {
+        "description": "fastp 质控报告（可视化）",
+        "filenames": [
+          "${sample}.html"
+        ],
+        "formats": [
+          "HTML"
+        ],
+        "omics": [
+          "通用"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-序列长度分布图",
+      "label": "IO",
+      "properties": {
+        "description": "序列长度分布图",
+        "filenames": [
+          "${sample}.fna.histograms.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-详细质控统计目录",
+      "label": "IO",
+      "properties": {
+        "description": "详细质控统计目录",
+        "filenames": [
+          "ng_QC/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "通用"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-均一化ASV表",
+      "label": "IO",
+      "properties": {
+        "description": "均一化 ASV 表",
+        "filenames": [
+          "asv_table.even.txt"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_alpha_data/asv_table.even.txt)",
+          "(${AMPLICON_ROOT}/examples/step3_upgma/asv_table.even.txt)",
+          "(${AMPLICON_ROOT}/examples/step4_catecomp/asv_table.even.txt)",
+          "(${AMPLICON_ROOT}/examples/step5_alpha_rarefaction/asv_table.even.txt)",
+          "(${AMPLICON_ROOT}/examples/step5_dca/asv_table.even.txt)",
+          "(${AMPLICON_ROOT}/examples/step5_nmds/asv_table.even.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-综合Alpha指数表",
+      "label": "IO",
+      "properties": {
+        "description": "综合 Alpha 指数表",
+        "filenames": [
+          "alpha_index_table/alpha_diversity_index.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Alpha多样性指数",
+      "label": "IO",
+      "properties": {
+        "description": "Alpha 多样性指数",
+        "filenames": [
+          "alpha_index_table/*.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Alpha稀化曲线可视化",
+      "label": "IO",
+      "properties": {
+        "description": "Alpha 稀化曲线可视化",
+        "filenames": [
+          "alpha_rarefaction.qzv"
+        ],
+        "formats": [
+          "QZV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-均一化ASV表_QIIME2_",
+      "label": "IO",
+      "properties": {
+        "description": "均一化 ASV 表（QIIME2）",
+        "filenames": [
+          "asv_table.even.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_beta_data/asv_table.even.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-有根系统发育树",
+      "label": "IO",
+      "properties": {
+        "description": "有根系统发育树",
+        "filenames": [
+          "rooted-tree.nwk",
+          "rooted-tree.qza"
+        ],
+        "formats": [
+          "NWK",
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_upgma/rooted-tree.nwk)",
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-样本元数据文件",
+      "label": "IO",
+      "properties": {
+        "description": "样本元数据文件",
+        "filenames": [
+          "all.mf",
+          "alpha.mf"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_beta_data/alpha.mf)",
+          "(${AMPLICON_ROOT}/examples/step3_upgma/alpha.mf)",
+          "(${AMPLICON_ROOT}/examples/step4_lefse/all.mf)",
+          "(${AMPLICON_ROOT}/examples/step5_alpha_rarefaction/alpha.mf)"
+        ]
+      }
+    },
+    {
+      "id": "io-重采样后的ASV表",
+      "label": "IO",
+      "properties": {
+        "description": "重采样后的 ASV 表",
+        "filenames": [
+          "rarefied_table.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Faith系统发育多样性指数",
+      "label": "IO",
+      "properties": {
+        "description": "Faith 系统发育多样性指数",
+        "filenames": [
+          "faith_pd_vector.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-观测物种数向量",
+      "label": "IO",
+      "properties": {
+        "description": "观测物种数向量",
+        "filenames": [
+          "observed_features_vector.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Shannon多样性指数向量",
+      "label": "IO",
+      "properties": {
+        "description": "Shannon 多样性指数向量",
+        "filenames": [
+          "shannon_vector.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Pielou均匀度向量",
+      "label": "IO",
+      "properties": {
+        "description": "Pielou 均匀度向量",
+        "filenames": [
+          "evenness_vector.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-非加权UniFrac距离矩阵",
+      "label": "IO",
+      "properties": {
+        "description": "非加权 UniFrac 距离矩阵",
+        "filenames": [
+          "unweighted_unifrac_distance_matrix.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-加权UniFrac距离矩阵",
+      "label": "IO",
+      "properties": {
+        "description": "加权 UniFrac 距离矩阵",
+        "filenames": [
+          "weighted_unifrac_distance_matrix.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Jaccard距离矩阵",
+      "label": "IO",
+      "properties": {
+        "description": "Jaccard 距离矩阵",
+        "filenames": [
+          "jaccard_distance_matrix.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Bray_Curtis距离矩阵",
+      "label": "IO",
+      "properties": {
+        "description": "Bray-Curtis 距离矩阵",
+        "filenames": [
+          "bray_curtis_distance_matrix.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-非加权UniFracPCoA结果",
+      "label": "IO",
+      "properties": {
+        "description": "非加权 UniFrac PCoA 结果",
+        "filenames": [
+          "unweighted_unifrac_pcoa_results.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-加权UniFracPCoA结果",
+      "label": "IO",
+      "properties": {
+        "description": "加权 UniFrac PCoA 结果",
+        "filenames": [
+          "weighted_unifrac_pcoa_results.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-JaccardPCoA结果",
+      "label": "IO",
+      "properties": {
+        "description": "Jaccard PCoA 结果",
+        "filenames": [
+          "jaccard_pcoa_results.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Bray_CurtisPCoA结果",
+      "label": "IO",
+      "properties": {
+        "description": "Bray-Curtis PCoA 结果",
+        "filenames": [
+          "bray_curtis_pcoa_results.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-非加权UniFracEmperor可视化",
+      "label": "IO",
+      "properties": {
+        "description": "非加权 UniFrac Emperor 可视化",
+        "filenames": [
+          "unweighted_unifrac_emperor.qzv"
+        ],
+        "formats": [
+          "QZV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-加权UniFracEmperor可视化",
+      "label": "IO",
+      "properties": {
+        "description": "加权 UniFrac Emperor 可视化",
+        "filenames": [
+          "weighted_unifrac_emperor.qzv"
+        ],
+        "formats": [
+          "QZV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-JaccardEmperor可视化",
+      "label": "IO",
+      "properties": {
+        "description": "Jaccard Emperor 可视化",
+        "filenames": [
+          "jaccard_emperor.qzv"
+        ],
+        "formats": [
+          "QZV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Bray_CurtisEmperor可视化",
+      "label": "IO",
+      "properties": {
+        "description": "Bray-Curtis Emperor 可视化",
+        "filenames": [
+          "bray_curtis_emperor.qzv"
+        ],
+        "formats": [
+          "QZV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-样本与序列文件路径的对应关系表",
+      "label": "IO",
+      "properties": {
+        "description": "样本与序列文件路径的对应关系表",
+        "filenames": [
+          "manifest.tsv"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_dada2/manifest.tsv)"
+        ]
+      }
+    },
+    {
+      "id": "io-质控后的序列文件_由manifest引用_",
+      "label": "IO",
+      "properties": {
+        "description": "质控后的序列文件（由 manifest 引用）",
+        "filenames": [
+          "${sample}.fastq"
+        ],
+        "formats": [
+          "FASTQ"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_dada2/D1.fastq.gz)"
+        ]
+      }
+    },
+    {
+      "id": "io-ASV代表序列_QIIME2_",
+      "label": "IO",
+      "properties": {
+        "description": "ASV 代表序列（QIIME2）",
+        "filenames": [
+          "featureSeqs.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_phylogeny/featureSeqs.qza)",
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-ASV丰度表_已排序_",
+      "label": "IO",
+      "properties": {
+        "description": "ASV 丰度表（已排序）",
+        "filenames": [
+          "feature-table.tsv"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-ASV代表序列",
+      "label": "IO",
+      "properties": {
+        "description": "ASV 代表序列",
+        "filenames": [
+          "feature.fasta"
+        ],
+        "formats": [
+          "FASTA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "细菌/古菌",
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_genus_tree/feature.fasta)",
+          "(${AMPLICON_ROOT}/examples/step4_funpre/feature.fasta)",
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-ASV丰度表_QIIME2_",
+      "label": "IO",
+      "properties": {
+        "description": "ASV 丰度表（QIIME2）",
+        "filenames": [
+          "featureTable.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-ASV丰度表_BIOM_",
+      "label": "IO",
+      "properties": {
+        "description": "ASV 丰度表（BIOM）",
+        "filenames": [
+          "featureTable.biom"
+        ],
+        "formats": [
+          "BIOM"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-ASV丰度表_BIOM格式_",
+      "label": "IO",
+      "properties": {
+        "description": "ASV 丰度表（BIOM 格式）",
+        "filenames": [
+          "featureTable.biom"
+        ],
+        "formats": [
+          "BIOM"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_feature_tables/asv_table.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-物种注释结果",
+      "label": "IO",
+      "properties": {
+        "description": "物种注释结果",
+        "filenames": [
+          "all_tax_assignments.txt"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_feature_tables/all_tax_assignments.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-标准化ASV特征表",
+      "label": "IO",
+      "properties": {
+        "description": "标准化 ASV 特征表",
+        "filenames": [
+          "asv_table.txt"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_table_stats/asv_table.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-带物种注释的BIOM表",
+      "label": "IO",
+      "properties": {
+        "description": "带物种注释的 BIOM 表",
+        "filenames": [
+          "featureTaxonomy.biom"
+        ],
+        "formats": [
+          "BIOM"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-物种注释表",
+      "label": "IO",
+      "properties": {
+        "description": "物种注释表",
+        "filenames": [
+          "all_tax_assignments.txt"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_genus_tree/all_tax_assignments.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-属水平相对丰度表",
+      "label": "IO",
+      "properties": {
+        "description": "属水平相对丰度表",
+        "filenames": [
+          "asv_table.g.relative.xls",
+          "genus.relative.xls"
+        ],
+        "formats": [
+          "XLS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_genus_tree/asv_table.g.relative.xls)",
+          "(${AMPLICON_ROOT}/examples/step4_network/genus.relative.xls)",
+          "(${AMPLICON_ROOT}/examples/step4_network3d/genus.relative.xls)"
+        ]
+      }
+    },
+    {
+      "id": "io-样本属进化树",
+      "label": "IO",
+      "properties": {
+        "description": "样本属进化树",
+        "filenames": [
+          "genus_evolutionary_tree/genus_100.tree.pdf",
+          "genus_evolutionary_tree/genus_100.tree.png",
+          "genus_evolutionary_tree/genus_100.tree.svg"
+        ],
+        "formats": [
+          "PDF",
+          "PNG",
+          "SVG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-分组属进化树",
+      "label": "IO",
+      "properties": {
+        "description": "分组属进化树",
+        "filenames": [
+          "genus_evolutionary_tree_group/genus_group_100.tree.pdf",
+          "genus_evolutionary_tree_group/genus_group_100.tree.png",
+          "genus_evolutionary_tree_group/genus_group_100.tree.svg"
+        ],
+        "formats": [
+          "PDF",
+          "PNG",
+          "SVG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-ASV代表序列_FASTA_",
+      "label": "IO",
+      "properties": {
+        "description": "ASV 代表序列（FASTA）",
+        "filenames": [
+          "sequences.fasta"
+        ],
+        "formats": [
+          "FASTA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_phylogeny/sequences.fasta)"
+        ]
+      }
+    },
+    {
+      "id": "io-有根系统发育树_QIIME2_",
+      "label": "IO",
+      "properties": {
+        "description": "有根系统发育树（QIIME2）",
+        "filenames": [
+          "rooted-tree.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-无根系统发育树_QIIME2_",
+      "label": "IO",
+      "properties": {
+        "description": "无根系统发育树（QIIME2）",
+        "filenames": [
+          "unrooted-tree.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-有根系统发育树_Newick_",
+      "label": "IO",
+      "properties": {
+        "description": "有根系统发育树（Newick）",
+        "filenames": [
+          "rooted_tree.nwk"
+        ],
+        "formats": [
+          "NWK"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-无根系统发育树_Newick_",
+      "label": "IO",
+      "properties": {
+        "description": "无根系统发育树（Newick）",
+        "filenames": [
+          "unrooted_tree.nwk"
+        ],
+        "formats": [
+          "NWK"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-均一化后的ASV表",
+      "label": "IO",
+      "properties": {
+        "description": "均一化后的 ASV 表",
+        "filenames": [
+          "asv_table.even.txt"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_alpha_data/asv_table.even.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-各分类层级相对丰度表",
+      "label": "IO",
+      "properties": {
+        "description": "各分类层级相对丰度表",
+        "filenames": [
+          "Relative/asv_table.*.relative.xls"
+        ],
+        "formats": [
+          "XLS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step3_top_species/Relative/asv_table.g.relative.xls)"
+        ]
+      }
+    },
+    {
+      "id": "io-物种注释表_文本_",
+      "label": "IO",
+      "properties": {
+        "description": "物种注释表（文本）",
+        "filenames": [
+          "taxonomy.tsv"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-物种注释结果_QIIME2_",
+      "label": "IO",
+      "properties": {
+        "description": "物种注释结果（QIIME2）",
+        "filenames": [
+          "seq_taxonomy.qza"
+        ],
+        "formats": [
+          "QZA"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-物种注释表_链接_",
+      "label": "IO",
+      "properties": {
+        "description": "物种注释表（链接）",
+        "filenames": [
+          "all_tax_assignments.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Top10物种表",
+      "label": "IO",
+      "properties": {
+        "description": "Top10 物种表",
+        "filenames": [
+          "top10/asv_table.*10.relative.xls"
+        ],
+        "formats": [
+          "XLS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Top10柱状图",
+      "label": "IO",
+      "properties": {
+        "description": "Top10 柱状图",
+        "filenames": [
+          "top10/*10.relative.dis.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-样本Unweighted树",
+      "label": "IO",
+      "properties": {
+        "description": "样本 Unweighted 树",
+        "filenames": [
+          "UPGMA_sample/unweighted_unifrac.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-样本Weighted树",
+      "label": "IO",
+      "properties": {
+        "description": "样本 Weighted 树",
+        "filenames": [
+          "UPGMA_sample/weighted_unifrac.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-分组Unweighted树",
+      "label": "IO",
+      "properties": {
+        "description": "分组 Unweighted 树",
+        "filenames": [
+          "UPGMA_group/unweighted_unifrac.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-分组Weighted树",
+      "label": "IO",
+      "properties": {
+        "description": "分组 Weighted 树",
+        "filenames": [
+          "UPGMA_group/weighted_unifrac.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-距离矩阵",
+      "label": "IO",
+      "properties": {
+        "description": "距离矩阵",
+        "filenames": [
+          "PCoA_data/*_dm.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-PCoA坐标",
+      "label": "IO",
+      "properties": {
+        "description": "PCoA 坐标",
+        "filenames": [
+          "PCoA_data/*_pc.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-样本分组文件",
+      "label": "IO",
+      "properties": {
+        "description": "样本分组文件",
+        "filenames": [
+          "group.list"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_catecomp/group.list)",
+          "(${AMPLICON_ROOT}/examples/step4_funpre/group.list)",
+          "(${AMPLICON_ROOT}/examples/step4_randomforest/group.list)",
+          "(${AMPLICON_ROOT}/examples/step4_simper/group.list)",
+          "(${AMPLICON_ROOT}/examples/step4_taxasummary/group.list)",
+          "(${AMPLICON_ROOT}/examples/step4_ttest/group.list)",
+          "(${AMPLICON_ROOT}/examples/step5_alpha_div/group.list)",
+          "(${AMPLICON_ROOT}/examples/step5_alpha_rarefaction/group.list)",
+          "(${AMPLICON_ROOT}/examples/step5_beta_div/group.list)",
+          "(${AMPLICON_ROOT}/examples/step5_dca/group.list)",
+          "(${AMPLICON_ROOT}/examples/step5_nmds/group.list)",
+          "(${AMPLICON_ROOT}/examples/step5_pca/group.list)",
+          "(${AMPLICON_ROOT}/examples/step5_pcoa/group.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-UnweightedUniFrac距离矩阵",
+      "label": "IO",
+      "properties": {
+        "description": "Unweighted UniFrac 距离矩阵",
+        "filenames": [
+          "unweighted_unifrac_dm.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_catecomp/unweighted_unifrac_dm.txt)",
+          "(${AMPLICON_ROOT}/examples/step5_beta_div/unweighted_unifrac_dm.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-WeightedUniFrac距离矩阵",
+      "label": "IO",
+      "properties": {
+        "description": "Weighted UniFrac 距离矩阵",
+        "filenames": [
+          "weighted_unifrac_dm.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_catecomp/weighted_unifrac_dm.txt)",
+          "(${AMPLICON_ROOT}/examples/step5_beta_div/weighted_unifrac_dm.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-ANOSIM统计结果",
+      "label": "IO",
+      "properties": {
+        "description": "ANOSIM 统计结果",
+        "filenames": [
+          "Anosim/stat_anosim.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-ANOSIM交互网页",
+      "label": "IO",
+      "properties": {
+        "description": "ANOSIM 交互网页",
+        "filenames": [
+          "Anosim/stat_anosim.js"
+        ],
+        "formats": [
+          "JS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-MRPP统计结果",
+      "label": "IO",
+      "properties": {
+        "description": "MRPP 统计结果",
+        "filenames": [
+          "MRPP/stat_mrpp.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-MRPP交互网页",
+      "label": "IO",
+      "properties": {
+        "description": "MRPP 交互网页",
+        "filenames": [
+          "MRPP/stat_mrpp.js"
+        ],
+        "formats": [
+          "JS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Adonis_PERMANOVA_结果",
+      "label": "IO",
+      "properties": {
+        "description": "Adonis (PERMANOVA) 结果",
+        "filenames": [
+          "Adonis/bray_adonis.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Adonis交互网页",
+      "label": "IO",
+      "properties": {
+        "description": "Adonis 交互网页",
+        "filenames": [
+          "Adonis/stat_adonis.js"
+        ],
+        "formats": [
+          "JS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-AMOVA统计结果",
+      "label": "IO",
+      "properties": {
+        "description": "AMOVA 统计结果",
+        "filenames": [
+          "Amova/weighted_unifrac/stat_amova.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-AMOVA交互网页",
+      "label": "IO",
+      "properties": {
+        "description": "AMOVA 交互网页",
+        "filenames": [
+          "Amova/weighted_unifrac/stat_amova.js"
+        ],
+        "formats": [
+          "JS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-ASV丰度表_BIOM或TSV格式_",
+      "label": "IO",
+      "properties": {
+        "description": "ASV 丰度表（BIOM 或 TSV 格式）",
+        "filenames": [
+          "featureTable.biom 或 featureTable.tsv"
+        ],
+        "formats": [
+          "BIOM/TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "细菌/古菌"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_funpre/featureTable.biom)"
+        ]
+      }
+    },
+    {
+      "id": "io-功能维恩图分组列表",
+      "label": "IO",
+      "properties": {
+        "description": "功能维恩图分组列表",
+        "filenames": [
+          "venng.list"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_funpre/venng.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-EC酶功能预测结果",
+      "label": "IO",
+      "properties": {
+        "description": "EC 酶功能预测结果",
+        "filenames": [
+          "EC_metagenome_out/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "细菌/古菌"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-KO通路预测结果",
+      "label": "IO",
+      "properties": {
+        "description": "KO 通路预测结果",
+        "filenames": [
+          "KO_metagenome_out/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "细菌/古菌"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-MetaCyc通路预测结果",
+      "label": "IO",
+      "properties": {
+        "description": "MetaCyc 通路预测结果",
+        "filenames": [
+          "pathways_out/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "细菌/古菌"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-功能维恩图_分组_",
+      "label": "IO",
+      "properties": {
+        "description": "功能维恩图（分组）",
+        "filenames": [
+          "fun_venn_group/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-均一化ASV表_含分类学信息_",
+      "label": "IO",
+      "properties": {
+        "description": "均一化 ASV 表（含分类学信息）",
+        "filenames": [
+          "asv_table.even.txt"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_krona/asv_table.even.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-Krona交互式图表",
+      "label": "IO",
+      "properties": {
+        "description": "Krona 交互式图表",
+        "filenames": [
+          "krona.html"
+        ],
+        "formats": [
+          "HTML"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Krona图片资源",
+      "label": "IO",
+      "properties": {
+        "description": "Krona 图片资源",
+        "filenames": [
+          "img/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-KronaJavaScript源码",
+      "label": "IO",
+      "properties": {
+        "description": "Krona JavaScript 源码",
+        "filenames": [
+          "src/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-各分类层级相对丰度表目录",
+      "label": "IO",
+      "properties": {
+        "description": "各分类层级相对丰度表目录",
+        "filenames": [
+          "Relative/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_lefse/Relative/)",
+          "(${AMPLICON_ROOT}/examples/step4_randomforest/Relative/)",
+          "(${AMPLICON_ROOT}/examples/step4_simper/Relative/)",
+          "(${AMPLICON_ROOT}/examples/step4_taxasummary/Relative/)",
+          "(${AMPLICON_ROOT}/examples/step4_ttest/Relative/)"
+        ]
+      }
+    },
+    {
+      "id": "io-LEfSe对比分组列表",
+      "label": "IO",
+      "properties": {
+        "description": "LEfSe 对比分组列表",
+        "filenames": [
+          "lefse_vs.list"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_lefse/lefse_vs.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-LDA判别图_进化树合并图",
+      "label": "IO",
+      "properties": {
+        "description": "LDA 判别图 + 进化树合并图",
+        "filenames": [
+          "LEfSe.pdf",
+          "LEfSe.png"
+        ],
+        "formats": [
+          "PDF",
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-LDA判别分析图",
+      "label": "IO",
+      "properties": {
+        "description": "LDA 判别分析图",
+        "filenames": [
+          "LDA.pdf",
+          "LDA.png"
+        ],
+        "formats": [
+          "PDF",
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-进化树分支图",
+      "label": "IO",
+      "properties": {
+        "description": "进化树分支图",
+        "filenames": [
+          "LDA.tree.pdf",
+          "LDA.tree.png"
+        ],
+        "formats": [
+          "PDF",
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-均一化绝对丰度表目录_各层级_",
+      "label": "IO",
+      "properties": {
+        "description": "均一化绝对丰度表目录（各层级）",
+        "filenames": [
+          "evenabs/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_metastat/evenabs/)"
+        ]
+      }
+    },
+    {
+      "id": "io-样本分组列表",
+      "label": "IO",
+      "properties": {
+        "description": "样本分组列表",
+        "filenames": [
+          "group.list"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_metastat/group.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-对比组列表",
+      "label": "IO",
+      "properties": {
+        "description": "对比组列表",
+        "filenames": [
+          "Vs.list"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_metastat/Vs.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-门水平分析结果",
+      "label": "IO",
+      "properties": {
+        "description": "门水平分析结果",
+        "filenames": [
+          "phylum/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-纲水平分析结果",
+      "label": "IO",
+      "properties": {
+        "description": "纲水平分析结果",
+        "filenames": [
+          "class/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-目水平分析结果",
+      "label": "IO",
+      "properties": {
+        "description": "目水平分析结果",
+        "filenames": [
+          "order/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-科水平分析结果",
+      "label": "IO",
+      "properties": {
+        "description": "科水平分析结果",
+        "filenames": [
+          "family/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-属水平分析结果",
+      "label": "IO",
+      "properties": {
+        "description": "属水平分析结果",
+        "filenames": [
+          "genus/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-种水平分析结果",
+      "label": "IO",
+      "properties": {
+        "description": "种水平分析结果",
+        "filenames": [
+          "species/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-差异物种热图",
+      "label": "IO",
+      "properties": {
+        "description": "差异物种热图",
+        "filenames": [
+          "*/Diff_heatmap/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-完成标记文件",
+      "label": "IO",
+      "properties": {
+        "description": "完成标记文件",
+        "filenames": [
+          "*/metastat.fin"
+        ],
+        "formats": [
+          "FIN"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Y组样本列表",
+      "label": "IO",
+      "properties": {
+        "description": "Y 组样本列表",
+        "filenames": [
+          "Y.list"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_network/Y.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-Z组样本列表",
+      "label": "IO",
+      "properties": {
+        "description": "Z 组样本列表",
+        "filenames": [
+          "Z.list"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_network/Z.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-Y组网络分析脚本",
+      "label": "IO",
+      "properties": {
+        "description": "Y 组网络分析脚本",
+        "filenames": [
+          "Y/Shell/*.sh"
+        ],
+        "formats": [
+          "SH"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Y组网络计算结果",
+      "label": "IO",
+      "properties": {
+        "description": "Y 组网络计算结果",
+        "filenames": [
+          "Y/dot/igraph.calculate.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Y组网络交互数据",
+      "label": "IO",
+      "properties": {
+        "description": "Y 组网络交互数据",
+        "filenames": [
+          "Y/dot/network.js"
+        ],
+        "formats": [
+          "JS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Z组网络分析脚本",
+      "label": "IO",
+      "properties": {
+        "description": "Z 组网络分析脚本",
+        "filenames": [
+          "Z/Shell/*.sh"
+        ],
+        "formats": [
+          "SH"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Z组网络计算结果",
+      "label": "IO",
+      "properties": {
+        "description": "Z 组网络计算结果",
+        "filenames": [
+          "Z/dot/igraph.calculate.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Z组网络交互数据",
+      "label": "IO",
+      "properties": {
+        "description": "Z 组网络交互数据",
+        "filenames": [
+          "Z/dot/network.js"
+        ],
+        "formats": [
+          "JS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-物种映射文件",
+      "label": "IO",
+      "properties": {
+        "description": "物种映射文件",
+        "filenames": [
+          "map.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-边数据文件",
+      "label": "IO",
+      "properties": {
+        "description": "边数据文件",
+        "filenames": [
+          "edgeplot.xls"
+        ],
+        "formats": [
+          "XLS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-节点数据文件",
+      "label": "IO",
+      "properties": {
+        "description": "节点数据文件",
+        "filenames": [
+          "node.xls"
+        ],
+        "formats": [
+          "XLS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-3D网络可视化_如果生成_",
+      "label": "IO",
+      "properties": {
+        "description": "3D 网络可视化（如果生成）",
+        "filenames": [
+          "network3D.html"
+        ],
+        "formats": [
+          "HTML"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-UPGMA系统发育树",
+      "label": "IO",
+      "properties": {
+        "description": "UPGMA 系统发育树",
+        "filenames": [
+          "upgma_tree.tre"
+        ],
+        "formats": [
+          "TRE"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_otutree/upgma_tree.tre)"
+        ]
+      }
+    },
+    {
+      "id": "io-门水平Top10物种丰度表",
+      "label": "IO",
+      "properties": {
+        "description": "门水平 Top10 物种丰度表",
+        "filenames": [
+          "top10_asv_table.p.relative.xls"
+        ],
+        "formats": [
+          "XLS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_otutree/top10_asv_table.p.relative.xls)"
+        ]
+      }
+    },
+    {
+      "id": "io-WeightedUniFrac树_SVG_",
+      "label": "IO",
+      "properties": {
+        "description": "Weighted UniFrac 树（SVG）",
+        "filenames": [
+          "UPGMA.W.tree.svg"
+        ],
+        "formats": [
+          "SVG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-WeightedUniFrac树_PNG_",
+      "label": "IO",
+      "properties": {
+        "description": "Weighted UniFrac 树（PNG）",
+        "filenames": [
+          "UPGMA.W.tree.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-UnweightedUniFrac树_SVG_",
+      "label": "IO",
+      "properties": {
+        "description": "Unweighted UniFrac 树（SVG）",
+        "filenames": [
+          "UPGMA.UnW.tree.svg"
+        ],
+        "formats": [
+          "SVG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-UnweightedUniFrac树_PNG_",
+      "label": "IO",
+      "properties": {
+        "description": "Unweighted UniFrac 树（PNG）",
+        "filenames": [
+          "UPGMA.UnW.tree.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-RandomForest对比列表",
+      "label": "IO",
+      "properties": {
+        "description": "Random Forest 对比列表",
+        "filenames": [
+          "rf.list"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_randomforest/rf.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-重要性图_准确率_",
+      "label": "IO",
+      "properties": {
+        "description": "重要性图（准确率）",
+        "filenames": [
+          "*/impplot_MeanDecreaseAccuracy*.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-重要性图_基尼系数_",
+      "label": "IO",
+      "properties": {
+        "description": "重要性图（基尼系数）",
+        "filenames": [
+          "*/impplot_MeanDecreaseGini*.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-训练集AUC曲线",
+      "label": "IO",
+      "properties": {
+        "description": "训练集 AUC 曲线",
+        "filenames": [
+          "*/trainset_auc.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-测试集AUC曲线",
+      "label": "IO",
+      "properties": {
+        "description": "测试集 AUC 曲线",
+        "filenames": [
+          "*/testset_auc.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-重要性图合并图",
+      "label": "IO",
+      "properties": {
+        "description": "重要性图合并图",
+        "filenames": [
+          "tax_show_ea.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-AUC曲线合并图",
+      "label": "IO",
+      "properties": {
+        "description": "AUC 曲线合并图",
+        "filenames": [
+          "auc.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-SIMPER分析结果",
+      "label": "IO",
+      "properties": {
+        "description": "SIMPER 分析结果",
+        "filenames": [
+          "*/simper_*.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-门水平物种组成热图",
+      "label": "IO",
+      "properties": {
+        "description": "门水平物种组成热图",
+        "filenames": [
+          "cluster/cluster.p.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-纲水平物种组成热图",
+      "label": "IO",
+      "properties": {
+        "description": "纲水平物种组成热图",
+        "filenames": [
+          "cluster/cluster.c.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-目水平物种组成热图",
+      "label": "IO",
+      "properties": {
+        "description": "目水平物种组成热图",
+        "filenames": [
+          "cluster/cluster.o.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-科水平物种组成热图",
+      "label": "IO",
+      "properties": {
+        "description": "科水平物种组成热图",
+        "filenames": [
+          "cluster/cluster.f.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-属水平物种组成热图",
+      "label": "IO",
+      "properties": {
+        "description": "属水平物种组成热图",
+        "filenames": [
+          "cluster/cluster.g.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-种水平物种组成热图",
+      "label": "IO",
+      "properties": {
+        "description": "种水平物种组成热图",
+        "filenames": [
+          "cluster/cluster.s.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-分组相对丰度表目录",
+      "label": "IO",
+      "properties": {
+        "description": "分组相对丰度表目录",
+        "filenames": [
+          "Relative_group/"
+        ],
+        "formats": [
+          "DIR"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_taxasummary_group/Relative_group/)",
+          "(${AMPLICON_ROOT}/examples/step4_ternary/Relative_group/)"
+        ]
+      }
+    },
+    {
+      "id": "io-门水平分组热图",
+      "label": "IO",
+      "properties": {
+        "description": "门水平分组热图",
+        "filenames": [
+          "cluster/cluster.p.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-纲水平分组热图",
+      "label": "IO",
+      "properties": {
+        "description": "纲水平分组热图",
+        "filenames": [
+          "cluster/cluster.c.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-目水平分组热图",
+      "label": "IO",
+      "properties": {
+        "description": "目水平分组热图",
+        "filenames": [
+          "cluster/cluster.o.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-科水平分组热图",
+      "label": "IO",
+      "properties": {
+        "description": "科水平分组热图",
+        "filenames": [
+          "cluster/cluster.f.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-属水平分组热图",
+      "label": "IO",
+      "properties": {
+        "description": "属水平分组热图",
+        "filenames": [
+          "cluster/cluster.g.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-种水平分组热图",
+      "label": "IO",
+      "properties": {
+        "description": "种水平分组热图",
+        "filenames": [
+          "cluster/cluster.s.png/pdf"
+        ],
+        "formats": [
+          "PNG/PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-三元相图分组列表",
+      "label": "IO",
+      "properties": {
+        "description": "三元相图分组列表",
+        "filenames": [
+          "ternary.list"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_ternary/ternary.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-三元相图_SVG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "三元相图（SVG 格式）",
+        "filenames": [
+          "*.svg"
+        ],
+        "formats": [
+          "SVG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-三元相图_PNG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "三元相图（PNG 格式）",
+        "filenames": [
+          "*.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-T检验结果",
+      "label": "IO",
+      "properties": {
+        "description": "T 检验结果",
+        "filenames": [
+          "*/t_test_*.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Wilcoxon检验结果",
+      "label": "IO",
+      "properties": {
+        "description": "Wilcoxon 检验结果",
+        "filenames": [
+          "*/wilcox_test_*.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-分组均一化ASV表",
+      "label": "IO",
+      "properties": {
+        "description": "分组均一化 ASV 表",
+        "filenames": [
+          "asv_table.group.even.txt"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_venn/asv_table.group.even.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-维恩图分组列表",
+      "label": "IO",
+      "properties": {
+        "description": "维恩图分组列表",
+        "filenames": [
+          "venn.G.list"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step4_venn/venn.G.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-维恩图_SVG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "维恩图（SVG 格式）",
+        "filenames": [
+          "Venn_group/*.svg"
+        ],
+        "formats": [
+          "SVG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-维恩图_PNG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "维恩图（PNG 格式）",
+        "filenames": [
+          "Venn_group/*.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-维恩图数据表",
+      "label": "IO",
+      "properties": {
+        "description": "维恩图数据表",
+        "filenames": [
+          "Venn_group/*.xls"
+        ],
+        "formats": [
+          "XLS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Alpha多样性指数表",
+      "label": "IO",
+      "properties": {
+        "description": "Alpha 多样性指数表",
+        "filenames": [
+          "alpha_diversity_index.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step5_alpha_div/alpha_diversity_index.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-ANOVA检验结果",
+      "label": "IO",
+      "properties": {
+        "description": "ANOVA 检验结果",
+        "filenames": [
+          "anova_test.txt"
+        ],
+        "formats": [
+          "TXT"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-ObservedFeatures蜜蜂群图",
+      "label": "IO",
+      "properties": {
+        "description": "Observed Features 蜜蜂群图",
+        "filenames": [
+          "beeswarm/observed_features.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Shannon指数蜜蜂群图",
+      "label": "IO",
+      "properties": {
+        "description": "Shannon 指数蜜蜂群图",
+        "filenames": [
+          "beeswarm/shannon.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Alpha多样性差异合并图",
+      "label": "IO",
+      "properties": {
+        "description": "Alpha 多样性差异合并图",
+        "filenames": [
+          "alpha_diff.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-RankAbundance曲线",
+      "label": "IO",
+      "properties": {
+        "description": "Rank Abundance 曲线",
+        "filenames": [
+          "rank_abundance.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-ObservedFeatures稀化曲线",
+      "label": "IO",
+      "properties": {
+        "description": "Observed Features 稀化曲线",
+        "filenames": [
+          "observed_features.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Alpha多样性合并图",
+      "label": "IO",
+      "properties": {
+        "description": "Alpha 多样性合并图",
+        "filenames": [
+          "alpha_diversity.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-分组稀化曲线",
+      "label": "IO",
+      "properties": {
+        "description": "分组稀化曲线",
+        "filenames": [
+          "observed_features.group.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-分组Alpha多样性合并图",
+      "label": "IO",
+      "properties": {
+        "description": "分组 Alpha 多样性合并图",
+        "filenames": [
+          "alpha_diversity.group.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-分组ASV表",
+      "label": "IO",
+      "properties": {
+        "description": "分组 ASV 表",
+        "filenames": [
+          "group_otu_table.even.txt"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-分组稀化曲线数据",
+      "label": "IO",
+      "properties": {
+        "description": "分组稀化曲线数据",
+        "filenames": [
+          "observed_features.group.xls"
+        ],
+        "formats": [
+          "XLS"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-UnweightedUniFrac差异箱线图",
+      "label": "IO",
+      "properties": {
+        "description": "Unweighted UniFrac 差异箱线图",
+        "filenames": [
+          "unweighted_unifrac.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-WeightedUniFrac差异箱线图",
+      "label": "IO",
+      "properties": {
+        "description": "Weighted UniFrac 差异箱线图",
+        "filenames": [
+          "weighted_unifrac.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-Beta多样性差异合并图",
+      "label": "IO",
+      "properties": {
+        "description": "Beta 多样性差异合并图",
+        "filenames": [
+          "beta_diff.svg/png"
+        ],
+        "formats": [
+          "SVG/PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-DCA排序图_SVG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "DCA 排序图（SVG 格式）",
+        "filenames": [
+          "DCA.svg"
+        ],
+        "formats": [
+          "SVG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-DCA排序图_PDF格式_",
+      "label": "IO",
+      "properties": {
+        "description": "DCA 排序图（PDF 格式）",
+        "filenames": [
+          "DCA.pdf"
+        ],
+        "formats": [
+          "PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-DCA排序图_PNG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "DCA 排序图（PNG 格式）",
+        "filenames": [
+          "DCA.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-分组颜色配置",
+      "label": "IO",
+      "properties": {
+        "description": "分组颜色配置",
+        "filenames": [
+          "group_col.list"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step5_nmds/group_col.list)"
+        ]
+      }
+    },
+    {
+      "id": "io-NMDS排序图_SVG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "NMDS 排序图（SVG 格式）",
+        "filenames": [
+          "NMDS.svg"
+        ],
+        "formats": [
+          "SVG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-NMDS排序图_PDF格式_",
+      "label": "IO",
+      "properties": {
+        "description": "NMDS 排序图（PDF 格式）",
+        "filenames": [
+          "NMDS.pdf"
+        ],
+        "formats": [
+          "PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-NMDS排序图_PNG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "NMDS 排序图（PNG 格式）",
+        "filenames": [
+          "NMDS.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-相对丰度ASV表",
+      "label": "IO",
+      "properties": {
+        "description": "相对丰度 ASV 表",
+        "filenames": [
+          "asv_table.relative.xls"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step5_pca/asv_table.relative.xls)"
+        ]
+      }
+    },
+    {
+      "id": "io-PCA排序图_SVG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "PCA 排序图（SVG 格式）",
+        "filenames": [
+          "UOA_pca.svg"
+        ],
+        "formats": [
+          "SVG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-PCA排序图_PDF格式_",
+      "label": "IO",
+      "properties": {
+        "description": "PCA 排序图（PDF 格式）",
+        "filenames": [
+          "UOA_pca.pdf"
+        ],
+        "formats": [
+          "PDF"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-PCA排序图_PNG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "PCA 排序图（PNG 格式）",
+        "filenames": [
+          "UOA_pca.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S/18S/ITS"
+        ],
+        "species": [
+          "通用"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-WeightedUniFracPCoA坐标",
+      "label": "IO",
+      "properties": {
+        "description": "Weighted UniFrac PCoA 坐标",
+        "filenames": [
+          "weighted_unifrac_pc.txt"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S"
+        ],
+        "species": [
+          "细菌/古菌"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step5_pcoa/weighted_unifrac_pc.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-UnweightedUniFracPCoA坐标",
+      "label": "IO",
+      "properties": {
+        "description": "Unweighted UniFrac PCoA 坐标",
+        "filenames": [
+          "unweighted_unifrac_pc.txt"
+        ],
+        "formats": [
+          "TSV"
+        ],
+        "omics": [
+          "16S"
+        ],
+        "species": [
+          "细菌/古菌"
+        ],
+        "examples": [
+          "(${AMPLICON_ROOT}/examples/step5_pcoa/unweighted_unifrac_pc.txt)"
+        ]
+      }
+    },
+    {
+      "id": "io-PCoA合并排序图_PDF格式_",
+      "label": "IO",
+      "properties": {
+        "description": "PCoA 合并排序图（PDF 格式）",
+        "filenames": [
+          "PCoA.pdf"
+        ],
+        "formats": [
+          "PDF"
+        ],
+        "omics": [
+          "16S"
+        ],
+        "species": [
+          "细菌/古菌"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-PCoA合并排序图_PNG格式_",
+      "label": "IO",
+      "properties": {
+        "description": "PCoA 合并排序图（PNG 格式）",
+        "filenames": [
+          "PCoA.png"
+        ],
+        "formats": [
+          "PNG"
+        ],
+        "omics": [
+          "16S"
+        ],
+        "species": [
+          "细菌/古菌"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-WeightedUniFracPCoA图",
+      "label": "IO",
+      "properties": {
+        "description": "Weighted UniFrac PCoA 图",
+        "filenames": [
+          "weighted_unifrac/PCoA12.pdf",
+          "weighted_unifrac/PCoA12.png"
+        ],
+        "formats": [
+          "PDF",
+          "PNG"
+        ],
+        "omics": [
+          "16S"
+        ],
+        "species": [
+          "细菌/古菌"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    },
+    {
+      "id": "io-UnweightedUniFracPCoA图",
+      "label": "IO",
+      "properties": {
+        "description": "Unweighted UniFrac PCoA 图",
+        "filenames": [
+          "unweighted_unifrac/PCoA12.pdf",
+          "unweighted_unifrac/PCoA12.png"
+        ],
+        "formats": [
+          "PDF",
+          "PNG"
+        ],
+        "omics": [
+          "16S"
+        ],
+        "species": [
+          "细菌/古菌"
+        ],
+        "examples": [
+          "-"
+        ]
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "from": "io-FASTA序列文件",
+      "to": "amp-import-fasta",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-import-fasta",
+      "to": "io-QIIME2格式序列文件",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-前向测序文件_双端_",
+      "to": "amp-cutadapt",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-反向测序文件_双端_",
+      "to": "amp-cutadapt",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-cutadapt",
+      "to": "io-去除引物后的前向fastq数据",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-cutadapt",
+      "to": "io-去除引物后的反向fastq数据",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-正向测序文件_双端_",
+      "to": "amp-flash",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-反向测序文件_双端_",
+      "to": "amp-flash",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-flash",
+      "to": "io-成功拼接的序列",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-flash",
+      "to": "io-未拼接的正向序列",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-flash",
+      "to": "io-未拼接的反向序列",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-flash",
+      "to": "io-拼接过程日志",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-FLASH拼接后的序列文件",
+      "to": "amp-frags-qc",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-frags-qc",
+      "to": "io-质控后序列",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-frags-qc",
+      "to": "io-质控后核酸序列",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-frags-qc",
+      "to": "io-fastp质控统计信息",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-frags-qc",
+      "to": "io-fastp质控报告_可视化_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-frags-qc",
+      "to": "io-序列长度分布图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-frags-qc",
+      "to": "io-详细质控统计目录",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-均一化ASV表",
+      "to": "amp-alpha-data",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-data",
+      "to": "io-综合Alpha指数表",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-data",
+      "to": "io-Alpha多样性指数",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-data",
+      "to": "io-Alpha稀化曲线可视化",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-均一化ASV表_QIIME2_",
+      "to": "amp-beta-data",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-有根系统发育树",
+      "to": "amp-beta-data",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本元数据文件",
+      "to": "amp-beta-data",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-重采样后的ASV表",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-Faith系统发育多样性指数",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-观测物种数向量",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-Shannon多样性指数向量",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-Pielou均匀度向量",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-非加权UniFrac距离矩阵",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-加权UniFrac距离矩阵",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-Jaccard距离矩阵",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-Bray_Curtis距离矩阵",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-非加权UniFracPCoA结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-加权UniFracPCoA结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-JaccardPCoA结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-Bray_CurtisPCoA结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-非加权UniFracEmperor可视化",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-加权UniFracEmperor可视化",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-JaccardEmperor可视化",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-data",
+      "to": "io-Bray_CurtisEmperor可视化",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-样本与序列文件路径的对应关系表",
+      "to": "amp-dada2",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-质控后的序列文件_由manifest引用_",
+      "to": "amp-dada2",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-dada2",
+      "to": "io-ASV代表序列_QIIME2_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-dada2",
+      "to": "io-ASV丰度表_已排序_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-dada2",
+      "to": "io-ASV代表序列",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-dada2",
+      "to": "io-ASV丰度表_QIIME2_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-dada2",
+      "to": "io-ASV丰度表_BIOM_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-ASV丰度表_BIOM格式_",
+      "to": "amp-feature-tables",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-物种注释结果",
+      "to": "amp-feature-tables",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-feature-tables",
+      "to": "io-标准化ASV特征表",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-feature-tables",
+      "to": "io-带物种注释的BIOM表",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-物种注释表",
+      "to": "amp-genus-tree",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-属水平相对丰度表",
+      "to": "amp-genus-tree",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-ASV代表序列",
+      "to": "amp-genus-tree",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-genus-tree",
+      "to": "io-样本属进化树",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-genus-tree",
+      "to": "io-分组属进化树",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-ASV代表序列_QIIME2_",
+      "to": "amp-phylogeny",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-ASV代表序列_FASTA_",
+      "to": "amp-phylogeny",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-phylogeny",
+      "to": "io-有根系统发育树_QIIME2_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-phylogeny",
+      "to": "io-无根系统发育树_QIIME2_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-phylogeny",
+      "to": "io-有根系统发育树_Newick_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-phylogeny",
+      "to": "io-无根系统发育树_Newick_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-标准化ASV特征表",
+      "to": "amp-table-stats",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-table-stats",
+      "to": "io-均一化后的ASV表",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-table-stats",
+      "to": "io-各分类层级相对丰度表",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-ASV代表序列_QIIME2_",
+      "to": "amp-taxonomy",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxonomy",
+      "to": "io-物种注释表_文本_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxonomy",
+      "to": "io-物种注释结果_QIIME2_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxonomy",
+      "to": "io-物种注释表_链接_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-各分类层级相对丰度表",
+      "to": "amp-top-species",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-top-species",
+      "to": "io-Top10物种表",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-top-species",
+      "to": "io-Top10柱状图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-均一化ASV表",
+      "to": "amp-upgma",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-有根系统发育树",
+      "to": "amp-upgma",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本元数据文件",
+      "to": "amp-upgma",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-upgma",
+      "to": "io-样本Unweighted树",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-upgma",
+      "to": "io-样本Weighted树",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-upgma",
+      "to": "io-分组Unweighted树",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-upgma",
+      "to": "io-分组Weighted树",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-upgma",
+      "to": "io-距离矩阵",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-upgma",
+      "to": "io-PCoA坐标",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-均一化ASV表",
+      "to": "amp-catecomp",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-catecomp",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-UnweightedUniFrac距离矩阵",
+      "to": "amp-catecomp",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-WeightedUniFrac距离矩阵",
+      "to": "amp-catecomp",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-catecomp",
+      "to": "io-ANOSIM统计结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-catecomp",
+      "to": "io-ANOSIM交互网页",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-catecomp",
+      "to": "io-MRPP统计结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-catecomp",
+      "to": "io-MRPP交互网页",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-catecomp",
+      "to": "io-Adonis_PERMANOVA_结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-catecomp",
+      "to": "io-Adonis交互网页",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-catecomp",
+      "to": "io-AMOVA统计结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-catecomp",
+      "to": "io-AMOVA交互网页",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-ASV丰度表_BIOM或TSV格式_",
+      "to": "amp-funpre",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-ASV代表序列",
+      "to": "amp-funpre",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-funpre",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-功能维恩图分组列表",
+      "to": "amp-funpre",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-funpre",
+      "to": "io-EC酶功能预测结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-funpre",
+      "to": "io-KO通路预测结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-funpre",
+      "to": "io-MetaCyc通路预测结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-funpre",
+      "to": "io-功能维恩图_分组_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-均一化ASV表_含分类学信息_",
+      "to": "amp-krona",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-krona",
+      "to": "io-Krona交互式图表",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-krona",
+      "to": "io-Krona图片资源",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-krona",
+      "to": "io-KronaJavaScript源码",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-各分类层级相对丰度表目录",
+      "to": "amp-lefse",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本元数据文件",
+      "to": "amp-lefse",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-LEfSe对比分组列表",
+      "to": "amp-lefse",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-lefse",
+      "to": "io-LDA判别图_进化树合并图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-lefse",
+      "to": "io-LDA判别分析图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-lefse",
+      "to": "io-进化树分支图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-均一化绝对丰度表目录_各层级_",
+      "to": "amp-metastat",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组列表",
+      "to": "amp-metastat",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-对比组列表",
+      "to": "amp-metastat",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-metastat",
+      "to": "io-门水平分析结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-metastat",
+      "to": "io-纲水平分析结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-metastat",
+      "to": "io-目水平分析结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-metastat",
+      "to": "io-科水平分析结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-metastat",
+      "to": "io-属水平分析结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-metastat",
+      "to": "io-种水平分析结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-metastat",
+      "to": "io-差异物种热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-metastat",
+      "to": "io-完成标记文件",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-属水平相对丰度表",
+      "to": "amp-network",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-Y组样本列表",
+      "to": "amp-network",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-Z组样本列表",
+      "to": "amp-network",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-network",
+      "to": "io-Y组网络分析脚本",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-network",
+      "to": "io-Y组网络计算结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-network",
+      "to": "io-Y组网络交互数据",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-network",
+      "to": "io-Z组网络分析脚本",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-network",
+      "to": "io-Z组网络计算结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-network",
+      "to": "io-Z组网络交互数据",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-属水平相对丰度表",
+      "to": "amp-network3d",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-network3d",
+      "to": "io-物种映射文件",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-network3d",
+      "to": "io-边数据文件",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-network3d",
+      "to": "io-节点数据文件",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-network3d",
+      "to": "io-3D网络可视化_如果生成_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-UPGMA系统发育树",
+      "to": "amp-otutree",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-门水平Top10物种丰度表",
+      "to": "amp-otutree",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-otutree",
+      "to": "io-WeightedUniFrac树_SVG_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-otutree",
+      "to": "io-WeightedUniFrac树_PNG_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-otutree",
+      "to": "io-UnweightedUniFrac树_SVG_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-otutree",
+      "to": "io-UnweightedUniFrac树_PNG_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-各分类层级相对丰度表目录",
+      "to": "amp-randomforest",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-randomforest",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-RandomForest对比列表",
+      "to": "amp-randomforest",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-randomforest",
+      "to": "io-重要性图_准确率_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-randomforest",
+      "to": "io-重要性图_基尼系数_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-randomforest",
+      "to": "io-训练集AUC曲线",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-randomforest",
+      "to": "io-测试集AUC曲线",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-randomforest",
+      "to": "io-重要性图合并图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-randomforest",
+      "to": "io-AUC曲线合并图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-各分类层级相对丰度表目录",
+      "to": "amp-simper",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-simper",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-simper",
+      "to": "io-SIMPER分析结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-各分类层级相对丰度表目录",
+      "to": "amp-taxasummary",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-taxasummary",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary",
+      "to": "io-门水平物种组成热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary",
+      "to": "io-纲水平物种组成热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary",
+      "to": "io-目水平物种组成热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary",
+      "to": "io-科水平物种组成热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary",
+      "to": "io-属水平物种组成热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary",
+      "to": "io-种水平物种组成热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-分组相对丰度表目录",
+      "to": "amp-taxasummary-group",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary-group",
+      "to": "io-门水平分组热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary-group",
+      "to": "io-纲水平分组热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary-group",
+      "to": "io-目水平分组热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary-group",
+      "to": "io-科水平分组热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary-group",
+      "to": "io-属水平分组热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-taxasummary-group",
+      "to": "io-种水平分组热图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-分组相对丰度表目录",
+      "to": "amp-ternary",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-三元相图分组列表",
+      "to": "amp-ternary",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-ternary",
+      "to": "io-三元相图_SVG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-ternary",
+      "to": "io-三元相图_PNG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-各分类层级相对丰度表目录",
+      "to": "amp-ttest",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-ttest",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-ttest",
+      "to": "io-T检验结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-ttest",
+      "to": "io-Wilcoxon检验结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-分组均一化ASV表",
+      "to": "amp-venn",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-维恩图分组列表",
+      "to": "amp-venn",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-venn",
+      "to": "io-维恩图_SVG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-venn",
+      "to": "io-维恩图_PNG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-venn",
+      "to": "io-维恩图数据表",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-Alpha多样性指数表",
+      "to": "amp-alpha-div",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-alpha-div",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-div",
+      "to": "io-ANOVA检验结果",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-div",
+      "to": "io-ObservedFeatures蜜蜂群图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-div",
+      "to": "io-Shannon指数蜜蜂群图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-div",
+      "to": "io-Alpha多样性差异合并图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-均一化ASV表",
+      "to": "amp-alpha-rarefaction",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本元数据文件",
+      "to": "amp-alpha-rarefaction",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-alpha-rarefaction",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-rarefaction",
+      "to": "io-RankAbundance曲线",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-rarefaction",
+      "to": "io-ObservedFeatures稀化曲线",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-rarefaction",
+      "to": "io-Alpha多样性合并图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-rarefaction",
+      "to": "io-分组稀化曲线",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-rarefaction",
+      "to": "io-分组Alpha多样性合并图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-rarefaction",
+      "to": "io-分组ASV表",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-alpha-rarefaction",
+      "to": "io-分组稀化曲线数据",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-UnweightedUniFrac距离矩阵",
+      "to": "amp-beta-div",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-WeightedUniFrac距离矩阵",
+      "to": "amp-beta-div",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-beta-div",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-div",
+      "to": "io-UnweightedUniFrac差异箱线图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-div",
+      "to": "io-WeightedUniFrac差异箱线图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-beta-div",
+      "to": "io-Beta多样性差异合并图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-均一化ASV表",
+      "to": "amp-dca",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-dca",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-dca",
+      "to": "io-DCA排序图_SVG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-dca",
+      "to": "io-DCA排序图_PDF格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-dca",
+      "to": "io-DCA排序图_PNG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-均一化ASV表",
+      "to": "amp-nmds",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-nmds",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-分组颜色配置",
+      "to": "amp-nmds",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-nmds",
+      "to": "io-NMDS排序图_SVG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-nmds",
+      "to": "io-NMDS排序图_PDF格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-nmds",
+      "to": "io-NMDS排序图_PNG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-相对丰度ASV表",
+      "to": "amp-pca",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-pca",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-pca",
+      "to": "io-PCA排序图_SVG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-pca",
+      "to": "io-PCA排序图_PDF格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-pca",
+      "to": "io-PCA排序图_PNG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "io-WeightedUniFracPCoA坐标",
+      "to": "amp-pcoa",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-UnweightedUniFracPCoA坐标",
+      "to": "amp-pcoa",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "io-样本分组文件",
+      "to": "amp-pcoa",
+      "type": "input",
+      "properties": {}
+    },
+    {
+      "from": "amp-pcoa",
+      "to": "io-PCoA合并排序图_PDF格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-pcoa",
+      "to": "io-PCoA合并排序图_PNG格式_",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-pcoa",
+      "to": "io-WeightedUniFracPCoA图",
+      "type": "output",
+      "properties": {}
+    },
+    {
+      "from": "amp-pcoa",
+      "to": "io-UnweightedUniFracPCoA图",
+      "type": "output",
+      "properties": {}
+    }
+  ]
+}
