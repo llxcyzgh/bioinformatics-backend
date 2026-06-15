@@ -12,5 +12,7 @@ from app.models.upload import UploadedFile
 from app.models.script_folder import ScriptFolder
 from app.models.script import Script
 from app.models.execution import Execution
+from app.models.domain import Domain
+from app.models.data_type import DataType
 
-__all__ = ["Base", "Model", "User", "Project", "Task", "Message", "Role", "Permission", "RolePermission", "UserRole", "Template", "UploadedFile", "ScriptFolder", "Script", "Execution"]
+__all__ = ["Base", "Model", "User", "Project", "Task", "Message", "Role", "Permission", "RolePermission", "UserRole", "Template", "UploadedFile", "ScriptFolder", "Script", "Execution", "Domain", "DataType"]

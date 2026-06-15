@@ -32,6 +32,10 @@ class Script(Model):
     verified_by = Column(Integer, ForeignKey("users.id"), nullable=False, default=0)
     valid_from = Column(String, nullable=False, default='')
     valid_until = Column(String, nullable=False, default='')
+    domain_id = Column(Integer, ForeignKey("domains.id"), nullable=False, default=0)
+    call_params = Column(Text, nullable=False, default='')
+    call_outputs = Column(Text, nullable=False, default='')
+    per_sample = Column(Integer, nullable=False, default=0)
 
     uploader = relationship("User", foreign_keys=[uploaded_by], backref="uploaded_scripts")
     verifier = relationship("User", foreign_keys=[verified_by])
@@ -61,6 +65,10 @@ class Script(Model):
             "verified_by": self.verified_by,
             "valid_from": self.valid_from,
             "valid_until": self.valid_until,
+            "domain_id": self.domain_id,
+            "call_params": self.call_params,
+            "call_outputs": self.call_outputs,
+            "per_sample": self.per_sample,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -2,7 +2,7 @@ import json
 import sys
 import uuid
 from app.services import AuthService
-from app.models import Base, User, Project, Task, Message, Role, Permission, RolePermission, UserRole, Template, UploadedFile, ScriptFolder, Script
+from app.models import Base, User, Project, Task, Message, Role, Permission, RolePermission, UserRole, Template, UploadedFile, ScriptFolder, Script, Domain, DataType
 from database import engine, SessionLocal
 
 
@@ -249,6 +249,9 @@ def seed():
     seed_templates()
     seed_script_folders()
     seed_scripts()
+    seed_domains()
+    seed_data_types()
+    backfill_domains()
 
 
 def migrate():
@@ -256,6 +259,7 @@ def migrate():
     migrate_messages_v2()
     migrate_tasks_v2()
     migrate_tasks_v3()
+    migrate_domains_v1()
     print("Database tables created successfully!")
 
 
@@ -487,6 +491,126 @@ def seed_scripts():
             print(f"Seed scripts created successfully! ({len(scripts)} scripts)")
         else:
             print("Scripts already exist, skipping seed.")
+    finally:
+        session.close()
+
+
+def migrate_domains_v1():
+    """多领域改造 v1：给 script_folders/scripts 加 domain_id，给 scripts 加 call_params/call_outputs/per_sample。"""
+    import sqlite3
+    from config.database import DATABASE_URL
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    new_columns = [
+        ("script_folders", "domain_id", "INTEGER NOT NULL DEFAULT 0"),
+        ("scripts", "domain_id", "INTEGER NOT NULL DEFAULT 0"),
+        ("scripts", "call_params", "TEXT NOT NULL DEFAULT ''"),
+        ("scripts", "call_outputs", "TEXT NOT NULL DEFAULT ''"),
+        ("scripts", "per_sample", "INTEGER NOT NULL DEFAULT 0"),
+    ]
+    for table, col, col_type in new_columns:
+        try:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
+            print(f"  Added column {table}.{col}")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e):
+                pass
+            else:
+                raise
+
+    conn.commit()
+    conn.close()
+
+
+def seed_domains():
+    session = SessionLocal()
+    try:
+        if session.query(Domain).count() == 0:
+            domain = Domain(
+                name="扩增子分析",
+                code="amplicon",
+                description="基于 16S/ITS/18S 等扩增子测序的微生物群落分析：ASV 推断、物种分类、多样性分析、统计检验与可视化。",
+                is_active=1,
+                keywords="扩增子,16S,ITS,18S,ASV,OTU,微生物,群落,多样性,DADA2,QIIME",
+                script_root="Amplicon",
+                sort_order=1,
+            )
+            session.add(domain)
+            session.commit()
+            print("Seed domains created successfully!")
+        else:
+            print("Domains already exist, skipping seed.")
+    finally:
+        session.close()
+
+
+def seed_data_types():
+    from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES, DATA_TYPE_TO_FILE_REQUIREMENT
+    session = SessionLocal()
+    try:
+        if session.query(DataType).count() == 0:
+            domain = session.query(Domain).filter(Domain.code == "amplicon").first()
+            if not domain:
+                print("Amplicon domain not found, skipping data_types seed.")
+                return
+            rows = []
+            for type_id, label in DATA_TYPE_NAMES.items():
+                req = DATA_TYPE_TO_FILE_REQUIREMENT.get(type_id, {})
+                rows.append(DataType(
+                    domain_id=domain.id,
+                    type_id=type_id,
+                    label=req.get("label", label) if req else label,
+                    description=req.get("description", "") if req else "",
+                    extensions=json.dumps(req.get("extensions", []), ensure_ascii=False) if req else "[]",
+                    required=int(req.get("required", 1)) if req else 1,
+                    multiple=int(req.get("multiple", 0)) if req else 0,
+                    is_uploadable=1 if req else 0,
+                ))
+            session.add_all(rows)
+            session.commit()
+            print(f"Seed data_types created successfully! ({len(rows)} types)")
+        else:
+            print("Data types already exist, skipping seed.")
+    finally:
+        session.close()
+
+
+def backfill_domains():
+    """把现有 folder/script 打上 amplicon 领域，并用 TOOL_SCRIPT_CALLS 回填脚本的调用参数。"""
+    from pkg.amplicon.script_registry import TOOL_SCRIPT_CALLS
+    session = SessionLocal()
+    try:
+        domain = session.query(Domain).filter(Domain.code == "amplicon").first()
+        if not domain:
+            print("Amplicon domain not found, skipping backfill.")
+            return
+
+        folders = session.query(ScriptFolder).filter(ScriptFolder.domain_id == 0).all()
+        for f in folders:
+            f.domain_id = domain.id
+
+        scripts = session.query(Script).filter(Script.domain_id == 0).all()
+        backfilled = 0
+        for s in scripts:
+            s.domain_id = domain.id
+            if not s.call_params:
+                call_def = TOOL_SCRIPT_CALLS.get(s.tool_id)
+                if call_def:
+                    s.call_params = json.dumps([
+                        {"flag": p.flag, "data_type": p.data_type, "required": p.required, "default": p.default}
+                        for p in call_def.params
+                    ], ensure_ascii=False)
+                    s.call_outputs = json.dumps([
+                        {"data_type": o.data_type, "filename": o.filename}
+                        for o in call_def.outputs
+                    ], ensure_ascii=False)
+                    s.per_sample = 1 if call_def.per_sample else 0
+                    backfilled += 1
+
+        session.commit()
+        print(f"Backfilled domains: {len(folders)} folders, {len(scripts)} scripts tagged amplicon; {backfilled} scripts got call params.")
     finally:
         session.close()
 
