@@ -3,8 +3,7 @@
 每个步骤调用独立的 sh 脚本，通过参数传递 input/output 文件。
 """
 
-from .script_registry import get_script_call, COMMON_PRIMERS
-from .amplicon_tools import get_all_tools, resolve_root_inputs, DATA_TYPE_TO_FILE_REQUIREMENT
+from .script_registry import ScriptCallDef, COMMON_PRIMERS
 
 
 def _extract_sample_name(filename: str) -> str:
@@ -45,6 +44,8 @@ def _resolve_fastq_pair_uploads(file_mappings: list[dict], required_files: list[
 
 def generate_orchestrator_script(
     tool_ids: list[str],
+    call_defs: dict[str, ScriptCallDef],
+    tool_names: dict[str, str],
     file_mappings: list[dict],
     required_files: list[dict],
     extra_params: dict | None = None,
@@ -54,15 +55,16 @@ def generate_orchestrator_script(
 
     Args:
         tool_ids: 工具链中的 tool_id 列表（按顺序）
+        call_defs: tool_id -> ScriptCallDef（脚本路径/参数/输出，由领域从 DB 构造）
+        tool_names: tool_id -> 显示名（由领域从 DB 构造）
         file_mappings: 上传文件映射 [{"slot_label", "original_name", "stored_name", "file_id"}]
-        required_files: resolve_root_inputs() 返回的文件需求列表
+        required_files: resolve_required_files() 返回的文件需求列表
         extra_params: 额外参数 {"primer_f", "primer_r", "metadata_file", "group_list"}
 
     Returns:
         生成的 bash 编排脚本字符串
     """
     extra = extra_params or {}
-    tool_map = {t.id: t for t in get_all_tools()}
 
     # ─── 解析用户上传文件 ───
     uploaded_files: dict[str, str] = {}  # data_type -> stored file path
@@ -97,7 +99,7 @@ def generate_orchestrator_script(
     lines.append("#!/bin/bash")
     lines.append("# BioFlow 自动生成编排脚本")
     lines.append("# 工具链: " + " → ".join(
-        tool_map.get(tid, type("Obj", (), {"name": tid})).name for tid in tool_ids
+        tool_names.get(tid, tid) for tid in tool_ids
     ))
     lines.append("")
     lines.append("set -euo pipefail")
@@ -140,9 +142,8 @@ def generate_orchestrator_script(
     total_steps = len(tool_ids)
 
     for tool_id in tool_ids:
-        call_def = get_script_call(tool_id)
-        tool_info = tool_map.get(tool_id)
-        tool_name = tool_info.name if tool_info else tool_id
+        call_def = call_defs.get(tool_id)
+        tool_name = tool_names.get(tool_id, tool_id)
 
         if not call_def:
             lines.append(f"# ⚠ 未找到 {tool_id} 的脚本注册，跳过")

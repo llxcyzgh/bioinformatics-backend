@@ -17,11 +17,11 @@ from app.services.execution_service import ExecutionService
 from app.services.ai_service import AIService
 from app.services.parser_service import ParserService
 from app.services.planner_service import PlannerService
+from app.services.domain_service import DomainService
 from app.services.upload_service import UploadService
 from config.llm import DASHSCOPE_API_BASE, DASHSCOPE_API_KEY, DASHSCOPE_MODEL_NAME, LLM_PARSER_TIMEOUT
 from config.upload import UPLOAD_DIR
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
-from pkg.amplicon.amplicon_tools import resolve_root_inputs
 from pkg.amplicon.code_templates import generate_workflow_script
 from pkg.amplicon.orchestrator import generate_orchestrator_script
 from app.services.script_service import ScriptService
@@ -153,7 +153,7 @@ class ChatService:
         return used_keys
 
     @staticmethod
-    def _route_decision(parser_result: dict, content: str, history_dicts: list[dict]) -> dict:
+    def _route_decision(db: Session, domain_id: int, parser_result: dict, content: str, history_dicts: list[dict]) -> dict:
         """根据解析结果决定回复类型"""
         available = parser_result.get("available_inputs", [])
         goals = parser_result.get("goal_types", [])
@@ -205,7 +205,7 @@ class ChatService:
             }
 
         # CASE D: 都知道 → 运行规划器
-        candidates = PlannerService.plan_workflow(available, goals)
+        candidates = PlannerService.plan_workflow(db, domain_id, available, goals)
 
         if not candidates:
             return {
@@ -299,13 +299,16 @@ class ChatService:
         )
         history_dicts = ChatService._build_history_dicts(history)
 
+        # Phase 2：领域固定为 amplicon；期三接入 DomainClassifier 后按描述分流
+        domain_id = DomainService.get_amplicon_domain(db).id
+
         # Parse user input (use combined content with image descriptions)
         try:
             parser_result = ParserService.parse(combined_content, history_dicts)
             logger.info(f"[ChatService] 解析结果: {parser_result}")
 
             # Decision routing
-            ai_response = ChatService._route_decision(parser_result, combined_content, history_dicts)
+            ai_response = ChatService._route_decision(db, domain_id, parser_result, combined_content, history_dicts)
         except Exception as e:
             logger.error(f"[ChatService] 解析/规划异常，回退到通用 AI: {e}")
             ai_response = AIService.generate_response(task.id, user_message, history)
@@ -372,8 +375,11 @@ class ChatService:
         tool_ids = [t["id"] for t in tool_chain if isinstance(t, dict) and "id" in t]
         explanation = candidate.get("explanation", "")
 
+        # Phase 2：领域固定为 amplicon；期三按描述分流
+        domain_id = DomainService.get_amplicon_domain(db).id
+
         # 确定必需文件
-        required_files = resolve_root_inputs(tool_ids)
+        required_files = DomainService.resolve_required_files(db, domain_id, tool_ids)
         logger.info(f"[ChatService] 必需文件: {[f['typeId'] for f in required_files]}")
 
         # 如果从原始序列数据开始，追加 metadata 文件需求
@@ -671,8 +677,14 @@ class ChatService:
         generated_code = ""
         if tool_ids:
             try:
+                # Phase 2：领域固定为 amplicon；期三按描述分流
+                domain_id = DomainService.get_amplicon_domain(db).id
+                call_defs = DomainService.get_call_defs(db, domain_id, tool_ids)
+                tool_names = DomainService.get_tool_names(db, domain_id)
                 generated_code = generate_orchestrator_script(
                     tool_ids=tool_ids,
+                    call_defs=call_defs,
+                    tool_names=tool_names,
                     file_mappings=enriched_mappings,
                     required_files=required_files_info,
                     extra_params=extra_params,
