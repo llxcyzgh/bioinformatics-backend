@@ -676,6 +676,7 @@ class ChatService:
                     file_mappings=enriched_mappings,
                     required_files=required_files_info,
                     extra_params=extra_params,
+                    task_id=task.id,
                 )
                 logger.info(f"[ChatService] 编排脚本生成完成: {len(generated_code)} 字符")
             except Exception as e:
