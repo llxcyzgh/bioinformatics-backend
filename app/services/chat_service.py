@@ -18,6 +18,7 @@ from app.services.ai_service import AIService
 from app.services.parser_service import ParserService
 from app.services.planner_service import PlannerService
 from app.services.domain_service import DomainService
+from app.services.domain_classifier import DomainClassifier
 from app.services.upload_service import UploadService
 from config.llm import DASHSCOPE_API_BASE, DASHSCOPE_API_KEY, DASHSCOPE_MODEL_NAME, LLM_PARSER_TIMEOUT
 from config.upload import UPLOAD_DIR
@@ -299,12 +300,24 @@ class ChatService:
         )
         history_dicts = ChatService._build_history_dicts(history)
 
-        # Phase 2：领域固定为 amplicon；期三接入 DomainClassifier 后按描述分流
-        domain_id = DomainService.get_amplicon_domain(db).id
+        # 期三：按描述分流到领域；首次确定后固定在任务上（多轮不重判）
+        if task.domain_id:
+            domain_id = task.domain_id
+        else:
+            domain_id = DomainClassifier.classify(db, combined_content)
+            if domain_id is None:
+                domain_id = DomainService.get_amplicon_domain(db).id
+            task.domain_id = domain_id
+            task.save(db)
+        domain = DomainService.get(db, domain_id)
 
         # Parse user input (use combined content with image descriptions)
         try:
-            parser_result = ParserService.parse(combined_content, history_dicts)
+            if domain.code == DomainService.AMPLICON_CODE:
+                parser_result = ParserService.parse(combined_content, history_dicts)
+            else:
+                domain_types = DomainService.get_type_vocab(db, domain_id)
+                parser_result = ParserService.parse(combined_content, history_dicts, domain_types=domain_types)
             logger.info(f"[ChatService] 解析结果: {parser_result}")
 
             # Decision routing
@@ -375,8 +388,8 @@ class ChatService:
         tool_ids = [t["id"] for t in tool_chain if isinstance(t, dict) and "id" in t]
         explanation = candidate.get("explanation", "")
 
-        # Phase 2：领域固定为 amplicon；期三按描述分流
-        domain_id = DomainService.get_amplicon_domain(db).id
+        # 期三：读取任务所属领域（旧任务回退 amplicon）
+        domain_id = task.domain_id or DomainService.get_amplicon_domain(db).id
 
         # 确定必需文件
         required_files = DomainService.resolve_required_files(db, domain_id, tool_ids)
@@ -677,8 +690,8 @@ class ChatService:
         generated_code = ""
         if tool_ids:
             try:
-                # Phase 2：领域固定为 amplicon；期三按描述分流
-                domain_id = DomainService.get_amplicon_domain(db).id
+                # 期三：读取任务所属领域（旧任务回退 amplicon）
+                domain_id = task.domain_id or DomainService.get_amplicon_domain(db).id
                 call_defs = DomainService.get_call_defs(db, domain_id, tool_ids)
                 tool_names = DomainService.get_tool_names(db, domain_id)
                 generated_code = generate_orchestrator_script(

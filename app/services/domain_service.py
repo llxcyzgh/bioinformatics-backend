@@ -10,7 +10,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.models import Domain, DataType, Script
+from app.models import Domain, DataType, Script, ScriptFolder
 from pkg.amplicon.amplicon_tools import ToolDef
 from pkg.amplicon.script_registry import ScriptCallDef, ParamDef, OutputFileDef
 
@@ -94,6 +94,15 @@ class DomainService:
         rows = Script.where(db, domain_id=domain_id, verified=1, is_active=1).all()
         return {s.tool_id: s.name for s in rows}
 
+    @staticmethod
+    def get_type_vocab(db: Session, domain_id: int) -> list[dict]:
+        """该领域的数据类型词表（供解析器动态构建 prompt）。"""
+        rows = DataType.where(db, domain_id=domain_id).all()
+        return [
+            {"type_id": t.type_id, "label": t.label, "is_uploadable": t.is_uploadable}
+            for t in rows
+        ]
+
     # ─── 根输入文件需求（替代 resolve_root_inputs）────────────
     @classmethod
     def resolve_required_files(cls, db: Session, domain_id: int, tool_chain_ids: list[str]) -> list[dict]:
@@ -156,6 +165,122 @@ class DomainService:
                     "required": True,
                 })
         return result
+
+    # ─── 领域 CRUD + 图 ─────────────────────────────────────
+    @staticmethod
+    def list_all(db: Session) -> list[Domain]:
+        return Domain.where(db).order_by(Domain.sort_order.asc()).all()
+
+    @staticmethod
+    def get(db: Session, domain_id: int) -> Domain:
+        domain = Domain.find(db, domain_id)
+        if not domain:
+            raise ValueError("领域不存在")
+        return domain
+
+    @staticmethod
+    def create_domain(db: Session, req) -> Domain:
+        if Domain.where(db, code=req.code).first():
+            raise ValueError(f"领域代码 {req.code} 已存在")
+        domain = Domain(
+            name=req.name,
+            code=req.code,
+            description=req.description,
+            keywords=req.keywords,
+            script_root=req.script_root,
+            is_active=1,
+        )
+        domain.save(db)
+        # 预置分类文件夹
+        for i, cat in enumerate(req.categories):
+            ScriptFolder(name=cat, parent_id=0, domain_id=domain.id, sort_order=i + 1).save(db)
+        # 类型词表
+        for dt in req.data_types:
+            DataType(
+                domain_id=domain.id,
+                type_id=dt.type_id,
+                label=dt.label or dt.type_id,
+                description=dt.description,
+                extensions=json.dumps(dt.extensions, ensure_ascii=False),
+                required=int(dt.required),
+                multiple=int(dt.multiple),
+                is_uploadable=int(dt.is_uploadable),
+            ).save(db)
+        logger.info(f"[DomainService] 创建领域 {domain.code} (id={domain.id})")
+        return domain
+
+    @classmethod
+    def update_domain(cls, db: Session, domain_id: int, req) -> Domain:
+        domain = DomainService.get(db, domain_id)
+        if req.name is not None:
+            domain.name = req.name
+        if req.description is not None:
+            domain.description = req.description
+        if req.keywords is not None:
+            domain.keywords = req.keywords
+        if req.is_active is not None:
+            domain.is_active = req.is_active
+        domain.save(db)
+        cls.invalidate(domain_id)
+        return domain
+
+    @classmethod
+    def toggle_active(cls, db: Session, domain_id: int) -> Domain:
+        domain = DomainService.get(db, domain_id)
+        domain.is_active = 0 if domain.is_active else 1
+        domain.save(db)
+        cls.invalidate(domain_id)
+        return domain
+
+    @classmethod
+    def delete_domain(cls, db: Session, domain_id: int) -> bool:
+        """级联软删领域及其脚本/文件夹/类型。"""
+        DomainService.get(db, domain_id)  # 404 if missing
+        for s in Script.where(db, domain_id=domain_id).all():
+            s.delete(db)
+        for f in ScriptFolder.where(db, domain_id=domain_id).all():
+            f.delete(db)
+        for t in DataType.where(db, domain_id=domain_id).all():
+            t.delete(db)
+        domain = Domain.find(db, domain_id)
+        if domain:
+            domain.delete(db)
+        cls.invalidate(domain_id)
+        return True
+
+    @classmethod
+    def get_graph(cls, db: Session, domain_id: int) -> dict:
+        """推导该领域的工具图：节点=脚本，边=输出∩输入类型匹配。"""
+        tools = cls.get_domain_tools(db, domain_id)
+        type_rows = DataType.where(db, domain_id=domain_id).all()
+
+        nodes = [
+            {
+                "id": t.id,
+                "name": t.name,
+                "category": t.category,
+                "inputs": t.inputs,
+                "outputs": t.outputs,
+            }
+            for t in tools
+        ]
+        edges: list[dict] = []
+        for a in tools:
+            for b in tools:
+                if a.id == b.id:
+                    continue
+                shared = sorted(set(a.outputs) & set(b.inputs))
+                if shared:
+                    edges.append({"source": a.id, "target": b.id, "types": shared})
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "dataTypes": [
+                {"type_id": t.type_id, "label": t.label, "is_uploadable": t.is_uploadable}
+                for t in type_rows
+            ],
+        }
 
     # ─── 缓存失效（期三脚本写操作时调用）──────────────────────
     @classmethod

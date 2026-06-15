@@ -239,3 +239,67 @@ class ScriptService:
             return ""
         with open(full_path, "r", encoding="utf-8", errors="replace") as f:
             return f.read()
+
+    @staticmethod
+    def upload_scripts_bulk(
+        db: Session,
+        script_files: list,
+        folder_id: int,
+        domain_id: int,
+        uploaded_by: int,
+        version: str = "1.0.0",
+        runtime: int = 0,
+        cost: float = 0.0,
+        weight: int = 0,
+        valid_from: str = "",
+        valid_until: str = "",
+    ) -> list:
+        """批量上传多个脚本文件，各自成独立 Script 行；tool_id 由领域代码+文件名生成。"""
+        import re
+        from app.models import Domain, ScriptFolder
+        from app.services.domain_service import DomainService
+
+        folder = ScriptFolder.find(db, folder_id) if folder_id else None
+        if not domain_id and folder:
+            domain_id = folder.domain_id
+        domain = Domain.find(db, domain_id) if domain_id else None
+        domain_code = (domain.code if domain else "tool") or "tool"
+        category = folder.name if folder else ""
+
+        created = []
+        seen = set()
+        for i, sf in enumerate(script_files):
+            base = os.path.splitext(sf.filename)[0] if sf.filename else f"script{i + 1}"
+            slug = re.sub(r"[^a-zA-Z0-9]+", "-", base).strip("-").lower() or f"script{i + 1}"
+            tool_id = f"{domain_code}-{slug}"
+            if tool_id in seen:
+                tool_id = f"{tool_id}-{i + 1}"
+            seen.add(tool_id)
+
+            script = ScriptService.upload_script(
+                db=db,
+                script_file=sf,
+                md_file=None,
+                name=base,
+                folder_id=folder_id,
+                tool_id=tool_id,
+                category=category,
+                uploaded_by=uploaded_by,
+                version=version,
+                runtime=runtime,
+                cost=cost,
+                weight=weight,
+                inputs="[]",
+                outputs="[]",
+                valid_from=valid_from,
+                valid_until=valid_until,
+            )
+            if domain_id:
+                script.domain_id = domain_id
+                script.save(db)
+            created.append(script)
+
+        if domain_id:
+            DomainService.invalidate(domain_id)
+        logger.info(f"[ScriptService] 批量上传 {len(created)} 个脚本 -> domain={domain_id} folder={folder_id}")
+        return created

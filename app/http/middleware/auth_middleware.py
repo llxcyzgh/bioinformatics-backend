@@ -40,3 +40,17 @@ async def auth_middleware(
 
 # Alias for common use
 Auth = Depends(auth_middleware)
+
+
+async def require_admin(current_user: User = Depends(auth_middleware)) -> User:
+    """要求当前用户具有 admin 角色"""
+    if not any(r.name == "admin" for r in current_user.roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要管理员权限",
+        )
+    return current_user
+
+
+# Admin-only dependency alias
+RequireAdmin = Depends(require_admin)

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class ParserService:
 
     @staticmethod
-    def parse(user_input: str, conversation_history: list[dict] | None = None) -> dict:
+    def parse(user_input: str, conversation_history: list[dict] | None = None, domain_types: list[dict] | None = None) -> dict:
         """
         解析用户输入，返回:
         {available_inputs: list[str], goal_types: list[str],
@@ -23,7 +23,7 @@ class ParserService:
         """
         if DASHSCOPE_API_KEY:
             try:
-                result = llm_parser.parse_natural_language(user_input, conversation_history)
+                result = llm_parser.parse_natural_language(user_input, conversation_history, domain_types=domain_types)
                 logger.info(f"[ParserService] LLM 解析成功: {result}")
                 return result
             except Exception as e:

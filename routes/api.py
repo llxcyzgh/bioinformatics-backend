@@ -12,6 +12,7 @@ from routes.chat import router as chat_router
 from routes.upload import router as upload_router
 from routes.script_folder import router as script_folder_router
 from routes.script import router as script_router
+from routes.domain import router as domain_router
 
 router.include_router(auth_router)
 router.include_router(project_router)
@@ -22,3 +23,4 @@ router.include_router(chat_router)
 router.include_router(upload_router)
 router.include_router(script_folder_router)
 router.include_router(script_router)
+router.include_router(domain_router)

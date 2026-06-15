@@ -91,6 +91,32 @@ class ScriptController:
             )
 
     @staticmethod
+    def upload_scripts_bulk(db: Session, script_files, folder_id: int, domain_id: int, uploaded_by: int, version: str, runtime: int, cost: float, weight: int, valid_from: str, valid_until: str) -> JSONResponse:
+        try:
+            scripts = ScriptService.upload_scripts_bulk(
+                db=db,
+                script_files=script_files,
+                folder_id=folder_id,
+                domain_id=domain_id,
+                uploaded_by=uploaded_by,
+                version=version,
+                runtime=runtime,
+                cost=cost,
+                weight=weight,
+                valid_from=valid_from,
+                valid_until=valid_until,
+            )
+            return JSONResponse(
+                status_code=status.HTTP_201_CREATED,
+                content={"data": [s.to_dict() for s in scripts], "count": len(scripts)},
+            )
+        except ValueError as e:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": str(e)},
+            )
+
+    @staticmethod
     def update_script(script_id: int, db: Session, **kwargs) -> JSONResponse:
         try:
             if "folder_id" in kwargs:

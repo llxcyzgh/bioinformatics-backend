@@ -260,6 +260,7 @@ def migrate():
     migrate_tasks_v2()
     migrate_tasks_v3()
     migrate_domains_v1()
+    migrate_domains_v2()
     print("Database tables created successfully!")
 
 
@@ -520,6 +521,25 @@ def migrate_domains_v1():
             else:
                 raise
 
+    conn.commit()
+    conn.close()
+
+
+def migrate_domains_v2():
+    """多领域改造：给 tasks 加 domain_id（任务所属领域）。"""
+    import sqlite3
+    from config.database import DATABASE_URL
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN domain_id INTEGER NOT NULL DEFAULT 0")
+        print("  Added column tasks.domain_id")
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" in str(e):
+            pass
+        else:
+            raise
     conn.commit()
     conn.close()
 

@@ -22,6 +22,7 @@ class Task(Model):
     status = Column(String, nullable=False, default='pending')
     qsub_id = Column(String, nullable=False, default='')
     script_path = Column(String, nullable=False, default='')
+    domain_id = Column(Integer, ForeignKey("domains.id"), nullable=False, default=0)
 
     # 关系
     project = relationship("Project", backref="tasks")
@@ -40,6 +41,7 @@ class Task(Model):
             "status": self.status,
             "qsub_id": self.qsub_id,
             "script_path": self.script_path,
+            "domain_id": self.domain_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

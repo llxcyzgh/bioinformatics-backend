@@ -68,6 +68,35 @@ def upload_script(
     )
 
 
+@router.post("/bulk")
+def upload_scripts_bulk(
+    script_files: list[UploadFile] = File(...),
+    folder_id: int = Form(0),
+    domain_id: int = Form(0),
+    version: str = Form("1.0.0"),
+    runtime: int = Form(0),
+    cost: float = Form(0.0),
+    weight: int = Form(0),
+    valid_from: str = Form(""),
+    valid_until: str = Form(""),
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    return ScriptController.upload_scripts_bulk(
+        db=db,
+        script_files=script_files,
+        folder_id=folder_id,
+        domain_id=domain_id,
+        uploaded_by=current_user.id,
+        version=version,
+        runtime=runtime,
+        cost=cost,
+        weight=weight,
+        valid_from=valid_from,
+        valid_until=valid_until,
+    )
+
+
 @router.put("/{script_id}")
 def update_script(
     script_id: int,

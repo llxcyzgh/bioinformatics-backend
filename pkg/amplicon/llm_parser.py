@@ -235,9 +235,44 @@ def _call_llm(messages: list[dict], temperature: float = 0.1, json_mode: bool = 
     return raw
 
 
-def parse_natural_language(user_input: str, conversation_history: list[dict] | None = None) -> dict:
+def build_system_prompt(domain_types: list[dict]) -> str:
+    """按领域类型词表动态构建解析 prompt（非 amplicon 领域使用）。"""
+    input_types = [t for t in domain_types if t.get("is_uploadable")]
+    goal_types = [t for t in domain_types if not t.get("is_uploadable")]
+
+    def _fmt(types: list[dict]) -> str:
+        return "\n".join(f"- {t['type_id']}：{t['label']}" for t in types) or "（无）"
+
+    return f"""\
+你是一个生物信息分析平台的自然语言理解模块。从用户描述中识别：
+1. 用户拥有什么数据（available_inputs）
+2. 用户想要什么分析结果（goal_types）
+
+必须严格从下列数据类型 ID 中选择，不能创造新的 ID。
+
+### 输入数据类型（用户可能已拥有的数据）：
+{_fmt(input_types)}
+
+### 分析目标数据类型（用户可能想要的结果）：
+{_fmt(goal_types)}
+
+## 识别规则
+1. available_inputs：仅当用户明确说明或暗示拥有某数据时才选择；未说明则返回 []，不要猜测。
+2. goal_types：选择所有匹配用户需求的目标 ID；无法确定则返回 []。
+3. 如果输入与本领域分析无关（问候、无意义字符），goal_types 必须为 []。
+4. confidence：high（描述清晰）/ medium（部分需推测）/ low（模糊或关联性弱）。
+5. scenario_description：一句话总结，如"从{{输入数据}}出发，目标：{{分析目标}}"。
+
+严格输出 JSON，不要输出其它内容：
+{{"available_inputs": ["ID", ...], "goal_types": ["ID", ...], "scenario_description": "...", "confidence": "medium"}}
+"""
+
+
+def parse_natural_language(user_input: str, conversation_history: list[dict] | None = None, domain_types: list[dict] | None = None) -> dict:
     """
     使用 LLM 解析用户自然语言描述。
+    domain_types 为 None 时走 amplicon 详细 prompt（保持历史行为）；
+    否则按给定领域的类型词表动态构建 prompt。
     返回: {available_inputs, goal_types, scenario_description, confidence}
     """
     logger.info(f"[LLM Parser] 收到用户输入: {user_input}")
@@ -246,7 +281,14 @@ def parse_natural_language(user_input: str, conversation_history: list[dict] | N
         raise LLMNotConfiguredError("LLM 服务未配置，请检查 DASHSCOPE_API_KEY 环境变量")
 
     try:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if domain_types is None:
+            system = SYSTEM_PROMPT
+            valid_ids = set(DATA_TYPE_NAMES.keys())
+        else:
+            system = build_system_prompt(domain_types)
+            valid_ids = {t["type_id"] for t in domain_types}
+
+        messages = [{"role": "system", "content": system}]
 
         if conversation_history:
             recent = conversation_history[-20:]
@@ -270,7 +312,7 @@ def parse_natural_language(user_input: str, conversation_history: list[dict] | N
             "confidence": parsed.get("confidence", "medium"),
         }
 
-        if _validate(result):
+        if _validate(result, valid_ids):
             return result
 
         raise LLMResponseError("LLM 返回的数据格式不正确，请重试")
@@ -313,8 +355,7 @@ def generate_clarification_prompt(user_input: str, conversation_history: list[di
         )
 
 
-def _validate(result: dict) -> bool:
-    valid_ids = set(DATA_TYPE_NAMES.keys())
+def _validate(result: dict, valid_ids: set[str]) -> bool:
     inputs = result.get("available_inputs")
     goals = result.get("goal_types")
 
