@@ -2,7 +2,7 @@ import logging
 
 from fastapi import UploadFile
 from fastapi import status
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from app.services import ChatService
@@ -123,6 +123,24 @@ class ChatController:
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)})
 
     @staticmethod
+    def simulate_execution(
+        task_uuid: str,
+        project_id: int,
+        user_id: int,
+        db: Session,
+    ) -> JSONResponse:
+        try:
+            result = ChatService.simulate_execution(
+                db=db,
+                task_uuid=task_uuid,
+                project_id=project_id,
+                user_id=user_id,
+            )
+            return JSONResponse(status_code=status.HTTP_200_OK, content=result)
+        except ValueError as e:
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)})
+
+    @staticmethod
     def get_execution_logs(
         task_uuid: str,
         user_id: int,
@@ -138,6 +156,28 @@ class ChatController:
         except ValueError as e:
             msg = str(e)
             code = status.HTTP_404_NOT_FOUND if "not found" in msg.lower() else status.HTTP_400_BAD_REQUEST
+            return JSONResponse(status_code=code, content={"detail": msg})
+
+    @staticmethod
+    def download_execution_logs(
+        task_uuid: str,
+        user_id: int,
+        db: Session,
+    ) -> FileResponse | JSONResponse:
+        try:
+            file_path, filename = ChatService.download_execution_logs(
+                db=db,
+                task_uuid=task_uuid,
+                user_id=user_id,
+            )
+            return FileResponse(
+                file_path,
+                filename=filename,
+                media_type="text/plain",
+            )
+        except ValueError as e:
+            msg = str(e)
+            code = status.HTTP_404_NOT_FOUND if "不存在" in msg or "not found" in msg.lower() else status.HTTP_400_BAD_REQUEST
             return JSONResponse(status_code=code, content={"detail": msg})
 
     @staticmethod

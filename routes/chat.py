@@ -99,6 +99,20 @@ def start_execution(
     )
 
 
+@router.post("/simulate-execution")
+def simulate_execution(
+    request: StartExecutionRequest,
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    return ChatController.simulate_execution(
+        task_uuid=request.task_uuid,
+        project_id=request.project_id,
+        user_id=current_user.id,
+        db=db,
+    )
+
+
 @router.get("/execution-logs/{task_uuid}")
 def execution_logs(
     task_uuid: str,
@@ -106,6 +120,19 @@ def execution_logs(
     db: Session = Depends(get_db),
 ):
     return ChatController.get_execution_logs(
+        task_uuid=task_uuid,
+        user_id=current_user.id,
+        db=db,
+    )
+
+
+@router.get("/execution-logs/{task_uuid}/download")
+def download_execution_logs(
+    task_uuid: str,
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    return ChatController.download_execution_logs(
         task_uuid=task_uuid,
         user_id=current_user.id,
         db=db,

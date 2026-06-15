@@ -2,6 +2,7 @@ import json
 import logging
 import base64
 import os
+import random
 import re
 import subprocess
 import uuid
@@ -57,6 +58,20 @@ class ChatService:
             user_id=user_id,
         )
         return task.save(db)
+
+    @staticmethod
+    def _ensure_sge_execd() -> None:
+        """检查 SGE 执行节点 sge_execd 是否已启动；未启动则抛出明确错误。"""
+        result = subprocess.run(
+            ["docker", "exec", "sge-master", "bash", "-c",
+             "source /opt/sge/default/common/settings.sh && ps aux | grep -v grep | grep sge_execd"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            raise ValueError(
+                "SGE 执行节点（sge_execd）未启动，无法提交任务。"
+                "请先运行：docker exec sge-master bash -c \"source /opt/sge/default/common/settings.sh && /opt/sge/bin/lx-amd64/sge_execd\""
+            )
 
     @staticmethod
     def _build_history_dicts(history: list) -> list[dict]:
@@ -837,6 +852,9 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
         # 创建 Execution 记录
         execution = ExecutionService.create(db, tid, tool_ids, script, container_script)
 
+        # 检查 SGE 执行节点是否就绪
+        ChatService._ensure_sge_execd()
+
         # 通过 docker exec 执行 qsub
         qsub_cmd = f"source /opt/sge/default/common/settings.sh && qsub -o /shared {container_script}"
         logger.info(f"[ChatService] 执行命令: {qsub_cmd}")
@@ -870,6 +888,131 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
             role="assistant",
             type="text",
             content=f"任务已提交，Job ID: {qsub_id}\n\n正在执行分析脚本，请等待日志输出...",
+            data=json.dumps({"execution_logs": True, "qsub_id": qsub_id, "execution_id": execution.id}, ensure_ascii=False),
+        )
+        ai_message.save(db)
+
+        return {
+            "task": task.to_dict(),
+            "message": ai_message.to_dict(),
+            "execution": execution.to_dict(),
+            "qsub_id": qsub_id,
+        }
+
+    @staticmethod
+    def simulate_execution(
+        db: Session,
+        task_uuid: str,
+        project_id: int,
+        user_id: int,
+    ) -> dict:
+        """模拟执行任务：只包含已选路径的 steps，每步用 5-10s sleep 模拟，通过真实 SGE 提交。"""
+        task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
+
+        if task.status in ("running", "completed"):
+            raise ValueError(f"任务当前状态为 {task.status}，不可重复执行")
+
+        logger.info(f"[ChatService] 开始模拟执行: task={task.id}")
+
+        # 获取 tool_ids（从 select_path 消息）
+        select_msg = (
+            Message.where(db, task_id=task.id)
+            .filter(Message.type == "select_path")
+            .order_by(Message.id.desc())
+            .first()
+        )
+        tool_ids = []
+        if select_msg and select_msg.data:
+            try:
+                tool_ids = json.loads(select_msg.data).get("tool_ids", [])
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        if not tool_ids:
+            raise ValueError("未找到已选路径，无法模拟执行")
+
+        tid = task.id
+
+        # 工具 ID -> 中文名映射
+        from pkg.amplicon.amplicon_tools import get_all_tools
+        tool_name_map = {t.id: t.name for t in get_all_tools()}
+
+        # SGE 脚本头部
+        sge_header = f"""#!/bin/bash
+#$ -N task_{tid}
+#$ -cwd
+#$ -j y
+#$ -o /shared/task_{tid}.log
+export PATH=/opt/conda/bin:$PATH
+"""
+
+        # 构造模拟 steps：每个 step 随机 5-10s sleep，前后带时间戳日志
+        step_lines = []
+        total = len(tool_ids)
+        for idx, tool_id in enumerate(tool_ids, start=1):
+            name = tool_name_map.get(tool_id, tool_id)
+            sleep_seconds = random.randint(5, 10)
+            step_lines.append(
+                f'echo "[$(TZ=\'Asia/Shanghai\' date \'+%Y-%m-%d %H:%M:%S\')] Step {idx}/{total}: {name} ({tool_id}) 开始..."'
+            )
+            step_lines.append(f"sleep {sleep_seconds}")
+            step_lines.append(
+                f'echo "[$(TZ=\'Asia/Shanghai\' date \'+%Y-%m-%d %H:%M:%S\')] Step {idx}/{total}: {name} ({tool_id}) 完成"'
+            )
+            step_lines.append("")
+
+        script = sge_header + "\n" + "\n".join(step_lines)
+        script += '\necho "[$(TZ=\'Asia/Shanghai\' date \'+%Y-%m-%d %H:%M:%S\')] 模拟执行全部完成"\n'
+        script += 'echo "Job Completed"\n'
+
+        logger.info(f"[ChatService] 生成模拟脚本: task={task.id}, steps={total}")
+
+        container_script = f"/shared/task_{tid}.sh"
+        shared_dir = os.getenv("SHARED_DIR", os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "shared")))
+        host_script = os.path.join(shared_dir, f"task_{tid}.sh")
+        host_script = os.path.normpath(host_script)
+        with open(host_script, "w", encoding="utf-8", newline="\n") as f:
+            f.write(script)
+
+        # 创建 Execution 记录
+        execution = ExecutionService.create(db, tid, tool_ids, script, container_script)
+
+        # 检查 SGE 执行节点是否就绪
+        ChatService._ensure_sge_execd()
+
+        # 通过 docker exec 执行 qsub（与真实执行一致）
+        qsub_cmd = f"source /opt/sge/default/common/settings.sh && qsub -o /shared {container_script}"
+        logger.info(f"[ChatService] 模拟执行提交命令: {qsub_cmd}")
+
+        result = subprocess.run(
+            ["docker", "exec", "sge-master", "bash", "-c", qsub_cmd],
+            capture_output=True, text=True, timeout=30,
+        )
+        output = result.stdout.strip()
+        logger.info(f"[ChatService] qsub 输出: {output}")
+
+        if result.returncode != 0:
+            error_msg = result.stderr.strip() or output
+            ExecutionService.fail(db, execution.id, f"qsub 提交失败: {error_msg}")
+            raise ValueError(f"qsub 提交失败: {error_msg}")
+
+        # 解析 job ID
+        match = re.search(r"Your job (\d+)", output)
+        if not match:
+            ExecutionService.fail(db, execution.id, f"无法解析 qsub 返回: {output}")
+            raise ValueError(f"无法解析 qsub 返回: {output}")
+
+        qsub_id = match.group(1)
+        logger.info(f"[ChatService] 模拟任务已提交, qsub_id={qsub_id}")
+
+        ExecutionService.start(db, execution.id, qsub_id)
+
+        # 创建助手消息
+        ai_message = Message(
+            task_id=task.id,
+            role="assistant",
+            type="text",
+            content=f"任务已提交（模拟执行），Job ID: {qsub_id}\n\n正在模拟分析脚本（共 {total} 步），请等待日志输出...",
             data=json.dumps({"execution_logs": True, "qsub_id": qsub_id, "execution_id": execution.id}, ensure_ascii=False),
         )
         ai_message.save(db)
@@ -944,6 +1087,32 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
         }
 
     @staticmethod
+    def download_execution_logs(
+        db: Session,
+        task_uuid: str,
+        user_id: int,
+    ) -> tuple[str, str]:
+        """返回任务执行日志文件路径和下载文件名"""
+        task = Task.where(db, uuid=task_uuid).first()
+        if not task or task.user_id != user_id:
+            raise ValueError("Task not found")
+
+        execution = ExecutionService.get_latest(db, task.id)
+        if not execution or not execution.qsub_id:
+            raise ValueError("没有执行记录")
+
+        log_filename = f"task_{task.id}.o{execution.qsub_id}"
+        shared_dir = os.getenv("SHARED_DIR", os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "shared")))
+        host_log = os.path.join(shared_dir, log_filename)
+        host_log = os.path.normpath(host_log)
+
+        if not os.path.exists(host_log):
+            raise ValueError("日志文件不存在")
+
+        download_name = f"task_{task.id}_{execution.qsub_id}.log"
+        return host_log, download_name
+
+    @staticmethod
     def retry_execution(
         db: Session,
         task_uuid: str,
@@ -977,6 +1146,9 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
             f.write(script)
 
         execution = ExecutionService.create(db, tid, tool_ids, script, container_script)
+
+        # 检查 SGE 执行节点是否就绪
+        ChatService._ensure_sge_execd()
 
         qsub_cmd = f"source /opt/sge/default/common/settings.sh && qsub -o /shared {container_script}"
         logger.info(f"[ChatService] 重试执行: {qsub_cmd}")
