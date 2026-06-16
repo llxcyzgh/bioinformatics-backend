@@ -49,6 +49,7 @@ def generate_orchestrator_script(
     file_mappings: list[dict],
     required_files: list[dict],
     extra_params: dict | None = None,
+    task_id: int | None = None,
 ) -> str:
     """
     生成编排脚本。
@@ -60,6 +61,7 @@ def generate_orchestrator_script(
         file_mappings: 上传文件映射 [{"slot_label", "original_name", "stored_name", "file_id"}]
         required_files: resolve_required_files() 返回的文件需求列表
         extra_params: 额外参数 {"primer_f", "primer_r", "metadata_file", "group_list"}
+        task_id: 任务 ID，用于生成日志标识
 
     Returns:
         生成的 bash 编排脚本字符串
@@ -106,6 +108,10 @@ def generate_orchestrator_script(
     lines.append("")
     lines.append('export PATH=/opt/conda/bin:$PATH')
     lines.append('export AMPLICON_ROOT="/opt/amplicon"')
+    if task_id is not None:
+        lines.append("")
+        lines.append(f'# Task log: /shared/task_{task_id}.log')
+        lines.append('_log() { echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] [$1] $2"; }')
     lines.append("")
 
     # 用户上传文件变量
@@ -152,20 +158,25 @@ def generate_orchestrator_script(
 
         step_num += 1
         lines.append(f"# ─── Step {step_num}/{total_steps}: {tool_name} ───")
-        lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] [Step {step_num}/{total_steps}] {tool_name}..."')
+        if task_id is not None:
+            lines.append(f'_log "INFO" "Step {step_num}/{total_steps}: {tool_name} 开始"')
+        else:
+            lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] [Step {step_num}/{total_steps}] {tool_name}..."')
 
         # ─── 特殊处理: per-sample 步骤 ───
         if call_def.per_sample and tool_id == "amp-cutadapt":
-            _gen_cutadapt_loop(lines, call_def, samples, extra, produced_files)
+            _gen_cutadapt_loop(lines, call_def, samples, extra, produced_files, step_num, task_id)
         elif call_def.per_sample and tool_id == "amp-flash":
-            _gen_flash_loop(lines, call_def, samples, produced_files)
+            _gen_flash_loop(lines, call_def, samples, produced_files, step_num, task_id)
         elif call_def.per_sample and tool_id == "amp-frags-qc":
-            _gen_frags_qc_loop(lines, call_def, samples, produced_files)
+            _gen_frags_qc_loop(lines, call_def, samples, produced_files, step_num, task_id)
         elif tool_id == "amp-dada2":
             # DADA2 需要 manifest，先生成 manifest 再调用
-            _gen_dada2_step(lines, call_def, samples, produced_files)
+            _gen_dada2_step(lines, call_def, samples, produced_files, step_num, task_id)
         else:
             # 通用步骤
+            if task_id is not None:
+                lines.append(f'_log "INFO" "Step {step_num}/{total_steps}: {tool_name} 执行中"')
             cmd = _build_single_command(call_def, produced_files, extra)
             lines.append(cmd)
 
@@ -174,14 +185,17 @@ def generate_orchestrator_script(
             fname = out.filename.replace("${sample}", "")
             produced_files[out.data_type] = fname
 
-        lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Step {step_num} 完成"')
+        if task_id is not None:
+            lines.append(f'_log "INFO" "Step {step_num}/{total_steps}: {tool_name} 完成"')
+        else:
+            lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Step {step_num} 完成"')
         lines.append("")
 
     return "\n".join(lines) + "\n"
 
 
 def _gen_cutadapt_loop(
-    lines: list[str], call_def, samples: dict, extra: dict, produced: dict
+    lines: list[str], call_def, samples: dict, extra: dict, produced: dict, step_num: int, task_id: int | None
 ):
     """生成 Cutadapt per-sample 循环。"""
     primer_f = extra.get("primer_f", COMMON_PRIMERS["16S V3-V4"]["f"])
@@ -196,11 +210,17 @@ def _gen_cutadapt_loop(
     lines.append("  # 查找实际文件名")
     lines.append("  for f in /shared/${SAMPLE}*.R1*; do R1_FILE=\"$f\"; break; done")
     lines.append("  for f in /shared/${SAMPLE}*.R2*; do R2_FILE=\"$f\"; break; done")
-    lines.append("  echo \"  处理样本: ${SAMPLE}\"")
+    if task_id is not None:
+        lines.append(f'  _log "INFO" "Step {step_num}: cutadapt 开始处理样本 ${{SAMPLE}}"')
+    else:
+        lines.append('  echo "  处理样本: ${SAMPLE}"')
     lines.append(f'  bash ${{AMPLICON_ROOT}}/{call_def.script_path} \\')
     lines.append('    -r1 "${R1_FILE}" \\')
     lines.append('    -r2 "${R2_FILE}" \\')
-    lines.append(f'    -f "{primer_f}" \\\n    -r "{primer_r}"')
+    lines.append(f'    -f "{primer_f}" \\')
+    lines.append(f'    -r "{primer_r}"')
+    if task_id is not None:
+        lines.append(f'  _log "INFO" "Step {step_num}: cutadapt 完成处理样本 ${{SAMPLE}}"')
     lines.append("done")
     lines.append("")
 
@@ -211,32 +231,49 @@ def _gen_cutadapt_loop(
     produced["TRIMMED_R2"] = f"${{{first_sample}}}.cutadapt.R2.fastq.gz"
 
 
-def _gen_flash_loop(lines: list[str], call_def, samples: dict, produced: dict):
+def _gen_flash_loop(
+    lines: list[str], call_def, samples: dict, produced: dict, step_num: int, task_id: int | None
+):
     """生成 FLASH per-sample 循环。"""
     lines.append("for SAMPLE in \"${SAMPLES[@]}\"; do")
     lines.append("  TRIMMED_R1=\"${SAMPLE}.cutadapt.R1.fastq.gz\"")
     lines.append("  TRIMMED_R2=\"${SAMPLE}.cutadapt.R2.fastq.gz\"")
-    lines.append("  echo \"  FLASH 合并: ${SAMPLE}\"")
+    if task_id is not None:
+        lines.append(f'  _log "INFO" "Step {step_num}: FLASH 开始合并样本 ${{SAMPLE}}"')
+    else:
+        lines.append('  echo "  FLASH 合并: ${SAMPLE}"')
     lines.append(f'  bash ${{AMPLICON_ROOT}}/{call_def.script_path} \\')
-    lines.append('    -1 "${TRIMMED_R1}" \\\n    -2 "${TRIMMED_R2}"')
+    lines.append('    -1 "${TRIMMED_R1}" \\')
+    lines.append('    -2 "${TRIMMED_R2}"')
+    if task_id is not None:
+        lines.append(f'  _log "INFO" "Step {step_num}: FLASH 完成合并样本 ${{SAMPLE}}"')
     lines.append("done")
     first_sample = next(iter(samples.keys())) if samples else "sample"
     produced["FASTQ_MERGED"] = f"${{{first_sample}}}.out.extendedFrags.fastq"
 
 
-def _gen_frags_qc_loop(lines: list[str], call_def, samples: dict, produced: dict):
+def _gen_frags_qc_loop(
+    lines: list[str], call_def, samples: dict, produced: dict, step_num: int, task_id: int | None
+):
     """生成 Frags QC per-sample 循环。"""
     lines.append("for SAMPLE in \"${SAMPLES[@]}\"; do")
     lines.append("  MERGED=\"${SAMPLE}.out.extendedFrags.fastq\"")
-    lines.append("  echo \"  质控: ${SAMPLE}\"")
+    if task_id is not None:
+        lines.append(f'  _log "INFO" "Step {step_num}: Frags QC 开始处理样本 ${{SAMPLE}}"')
+    else:
+        lines.append('  echo "  质控: ${SAMPLE}"')
     lines.append(f'  bash ${{AMPLICON_ROOT}}/{call_def.script_path} \\')
     lines.append('    -i "${MERGED}"')
+    if task_id is not None:
+        lines.append(f'  _log "INFO" "Step {step_num}: Frags QC 完成处理样本 ${{SAMPLE}}"')
     lines.append("done")
     first_sample = next(iter(samples.keys())) if samples else "sample"
     produced["FASTQ_QC"] = f"${{{first_sample}}}.fastq"
 
 
-def _gen_dada2_step(lines: list[str], call_def, samples: dict, produced: dict):
+def _gen_dada2_step(
+    lines: list[str], call_def, samples: dict, produced: dict, step_num: int, task_id: int | None
+):
     """生成 DADA2 步骤，包括 manifest 生成。"""
     lines.append("# 生成 manifest 文件")
     lines.append('echo -e "sample-id\\tabsolute-filepath" > manifest.tsv')
@@ -247,9 +284,13 @@ def _gen_dada2_step(lines: list[str], call_def, samples: dict, produced: dict):
     else:
         lines.append("# ⚠ 未检测到样本，需手动编辑 manifest.tsv")
     lines.append("")
+    if task_id is not None:
+        lines.append(f'_log "INFO" "Step {step_num}: DADA2 开始"')
     lines.append(f'bash ${{AMPLICON_ROOT}}/{call_def.script_path} \\')
     lines.append('  -m manifest.tsv \\')
     lines.append('  -t 0 -n 12')
+    if task_id is not None:
+        lines.append(f'_log "INFO" "Step {step_num}: DADA2 完成"')
 
     produced["FEATURE_SEQS"] = "featureSeqs.qza"
     produced["FEATURE_TABLE"] = "featureTable.biom"
