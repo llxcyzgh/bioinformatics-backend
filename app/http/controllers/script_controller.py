@@ -42,6 +42,22 @@ class ScriptController:
             )
 
     @staticmethod
+    def get_source(script_id: int, db: Session) -> JSONResponse:
+        """读取脚本真正的 .sh 源码（admin 预览用）。"""
+        try:
+            script = ScriptService.get(db, script_id)
+            content = ScriptService.read_script_content(script.file_path)
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={"data": {"content": content, "filename": script.file_path, "size": len(content)}},
+            )
+        except ValueError as e:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"detail": str(e)},
+            )
+
+    @staticmethod
     def upload_script(
         db: Session,
         script_file: UploadFile,

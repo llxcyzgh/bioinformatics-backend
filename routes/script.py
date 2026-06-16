@@ -177,3 +177,9 @@ def delete_script(
 @router.get("/{script_id}/download")
 def download_script(script_id: int, db: Session = Depends(get_db)):
     return ScriptController.download_script(script_id, db)
+
+
+@router.get("/{script_id}/source")
+def get_script_source(script_id: int, db: Session = Depends(get_db)):
+    """返回脚本真正的 .sh 源码文本（预览用，只读）。"""
+    return ScriptController.get_source(script_id, db)
