@@ -252,6 +252,7 @@ def seed():
     seed_domains()
     seed_data_types()
     backfill_domains()
+    backfill_md_content()
 
 
 def migrate():
@@ -631,6 +632,50 @@ def backfill_domains():
 
         session.commit()
         print(f"Backfilled domains: {len(folders)} folders, {len(scripts)} scripts tagged amplicon; {backfilled} scripts got call params.")
+    finally:
+        session.close()
+
+
+def backfill_md_content():
+    """为 md_content 为空的脚本，按 file_path 推导同名 .md（scripts/→reference/）读入。
+
+    幂等：只填充空 md_content。支持 .sh 与 .md 分置不同子目录的结构
+    （如 Amplicon/scripts/foo.sh ↔ Amplicon/reference/foo.md）。
+    """
+    import os
+    import glob
+    session = SessionLocal()
+    scripts_dir = os.getenv("SCRIPTS_DIR", "scripts")
+    try:
+        scripts = [s for s in session.query(Script).all() if not (s.md_content or "").strip()]
+        filled = 0
+        for s in scripts:
+            if not s.file_path:
+                continue
+            parts = s.file_path.replace("\\", "/").split("/")
+            base = os.path.splitext(parts[-1])[0]
+            dirs = parts[:-1]
+            top = parts[0] if parts else ""
+            candidates = []
+            if dirs:
+                # 上级目录下的 reference/ + 同名 .md（Amplicon/scripts/foo.sh → Amplicon/reference/foo.md）
+                candidates.append(os.path.join(scripts_dir, *dirs[:-1], "reference", base + ".md"))
+                # 同目录同名 .md
+                candidates.append(os.path.join(scripts_dir, *dirs, base + ".md"))
+            # 兜底：顶层目录下递归找同名 .md
+            if top:
+                candidates += glob.glob(os.path.join(scripts_dir, top, "**", base + ".md"), recursive=True)
+            for cand in candidates:
+                if os.path.isfile(cand):
+                    try:
+                        with open(cand, "r", encoding="utf-8", errors="replace") as fp:
+                            s.md_content = fp.read()
+                        filled += 1
+                    except Exception:
+                        pass
+                    break
+        session.commit()
+        print(f"Backfilled md_content: {filled} scripts got .md docs.")
     finally:
         session.close()
 
