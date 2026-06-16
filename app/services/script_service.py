@@ -327,3 +327,140 @@ class ScriptService:
             DomainService.invalidate(domain_id)
         logger.info(f"[ScriptService] 批量上传 {len(created)} 个脚本 -> domain={domain_id} folder={folder_id}")
         return created
+
+    @staticmethod
+    def upload_library(
+        db: Session,
+        files: list,
+        paths: list,
+        domain_id: int,
+        uploaded_by: int,
+    ) -> dict:
+        """
+        文件夹上传：files 与 paths 同序，paths 为浏览器相对路径（含所选根目录）。
+        按「相对路径去扩展名」配对 .sh + .md；子目录（去掉所选根）作为分类文件夹。
+        从 .md 确定性解析元数据建图；.sh 落盘用于执行。新建脚本默认未校验/未启用。
+        """
+        import re
+        from app.models import Domain, ScriptFolder
+        from app.services.md_script_parser import parse_md
+
+        domain = Domain.find(db, domain_id) if domain_id else None
+        domain_code = (domain.code if domain else "tool") or "tool"
+
+        # 1) 配对：key = 相对路径去扩展名
+        SH_EXTS = {".sh"}
+        MD_EXTS = {".md", ".markdown"}
+        pairs: dict[str, dict] = {}
+        warnings = {"orphan_sh": [], "orphan_md": [], "ignored": []}
+
+        for f, raw_path in zip(files, paths):
+            rel = (raw_path or f.filename or "").replace("\\", "/")
+            ext = os.path.splitext(rel)[1].lower()
+            if ext in SH_EXTS:
+                kind = "sh"
+            elif ext in MD_EXTS:
+                kind = "md"
+            else:
+                warnings["ignored"].append(rel)
+                continue
+            key = rel[: -len(ext)] if ext else rel  # 去扩展名
+            bucket = pairs.setdefault(key, {"sh": None, "md": None, "rel": rel})
+            bucket[kind] = f
+
+        # 2) 分类文件夹：key 目录部分去掉首个段（所选根）
+        def category_of(key: str) -> str:
+            parts = key.split("/")
+            # 去掉首段（所选根）和末段（文件名），中间为分类
+            mid = parts[1:-1]
+            return "/".join(mid)
+
+        folder_cache: dict[str, int] = {}
+
+        def get_or_create_folder(cat: str) -> int:
+            if not cat:
+                return 0
+            if cat in folder_cache:
+                return folder_cache[cat]
+            existing = ScriptFolder.where(db, name=cat, parent_id=0, domain_id=domain_id).first()
+            if existing:
+                folder_cache[cat] = existing.id
+                return existing.id
+            folder = ScriptFolder(name=cat, parent_id=0, domain_id=domain_id).save(db)
+            folder_cache[cat] = folder.id
+            return folder.id
+
+        # 3) 逐对处理
+        created = []
+        seen_tool_ids = set()
+        for key, bucket in pairs.items():
+            sh_f, md_f = bucket["sh"], bucket["md"]
+            if sh_f and not md_f:
+                warnings["orphan_sh"].append(bucket["rel"])
+                continue
+            if md_f and not sh_f:
+                warnings["orphan_md"].append(bucket["rel"])
+                continue
+            if not sh_f or not md_f:
+                continue
+
+            cat = category_of(key)
+            folder_id = get_or_create_folder(cat)
+
+            # 解析 .md
+            try:
+                md_text = md_f.file.read().decode("utf-8", errors="replace")
+            except Exception as e:
+                logger.warning(f"[upload_library] 读取 .md 失败 {bucket['rel']}: {e}")
+                md_text = ""
+            meta = parse_md(md_text)
+
+            # 存 .sh
+            try:
+                sh_bytes = sh_f.file.read()
+            except Exception:
+                sh_bytes = b""
+            stored_name = f"{uuid.uuid4().hex}.sh"
+            dest_dir = os.path.join(SCRIPTS_DIR, "uploaded")
+            os.makedirs(dest_dir, exist_ok=True)
+            with open(os.path.join(dest_dir, stored_name), "wb") as fp:
+                fp.write(sh_bytes)
+            rel_path = f"uploaded/{stored_name}"
+
+            # tool_id：优先 .md 的 tool_name，否则基名 slug
+            base = os.path.splitext(os.path.basename(sh_f.filename or key))[0]
+            slug_src = meta.get("tool_name") or base
+            slug = re.sub(r"[^a-zA-Z0-9]+", "-", slug_src).strip("-").lower() or "script"
+            tool_id = f"{domain_code}-{slug}"
+            if tool_id in seen_tool_ids:
+                tool_id = f"{tool_id}-{len(seen_tool_ids) + 1}"
+            seen_tool_ids.add(tool_id)
+
+            script = Script(
+                name=meta.get("name") or base,
+                description=meta.get("description") or "",
+                folder_id=folder_id,
+                tool_id=tool_id,
+                category=cat,
+                file_path=rel_path,
+                md_content=md_text,
+                inputs=json.dumps(meta.get("inputs") or [], ensure_ascii=False),
+                outputs=json.dumps(meta.get("outputs") or [], ensure_ascii=False),
+                call_params=json.dumps(meta.get("call_params") or [], ensure_ascii=False),
+                call_outputs=json.dumps(meta.get("call_outputs") or [], ensure_ascii=False),
+                runtime=meta.get("runtime") or 0,
+                cost=meta.get("cost") or 0.0,
+                uploaded_by=uploaded_by,
+                domain_id=domain_id or 0,
+                verified=0,
+                is_active=0,
+            ).save(db)
+            created.append(script)
+
+        if domain_id:
+            DomainService.invalidate(domain_id)
+        logger.info(
+            f"[upload_library] 领域={domain_id} 配对成功={len(created)} "
+            f"孤立sh={len(warnings['orphan_sh'])} 孤立md={len(warnings['orphan_md'])} 忽略={len(warnings['ignored'])}"
+        )
+        return {"created": created, "warnings": warnings}

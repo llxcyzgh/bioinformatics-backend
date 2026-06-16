@@ -117,6 +117,26 @@ class ScriptController:
             )
 
     @staticmethod
+    def upload_library(db: Session, files, paths, domain_id: int, uploaded_by: int) -> JSONResponse:
+        try:
+            result = ScriptService.upload_library(
+                db=db, files=files, paths=paths, domain_id=domain_id, uploaded_by=uploaded_by
+            )
+            return JSONResponse(
+                status_code=status.HTTP_201_CREATED,
+                content={
+                    "data": [s.to_dict() for s in result["created"]],
+                    "warnings": result["warnings"],
+                    "count": len(result["created"]),
+                },
+            )
+        except ValueError as e:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"detail": str(e)},
+            )
+
+    @staticmethod
     def update_script(script_id: int, db: Session, **kwargs) -> JSONResponse:
         try:
             if "folder_id" in kwargs:

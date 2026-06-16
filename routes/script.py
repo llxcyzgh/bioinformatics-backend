@@ -97,6 +97,20 @@ def upload_scripts_bulk(
     )
 
 
+@router.post("/upload-library")
+def upload_library(
+    files: list[UploadFile] = File(...),
+    paths: list[str] = Form(...),
+    domain_id: int = Form(0),
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    """文件夹上传：files 与 paths 同序（paths 为浏览器相对路径），后端按基名配对 .sh+.md。"""
+    return ScriptController.upload_library(
+        db=db, files=files, paths=paths, domain_id=domain_id, uploaded_by=current_user.id
+    )
+
+
 @router.put("/{script_id}")
 def update_script(
     script_id: int,
