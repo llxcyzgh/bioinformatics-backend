@@ -21,7 +21,7 @@ from app.services.planner_service import PlannerService
 from app.services.domain_service import DomainService
 from app.services.domain_classifier import DomainClassifier
 from app.services.upload_service import UploadService
-from config.llm import DASHSCOPE_API_BASE, DASHSCOPE_API_KEY, DASHSCOPE_MODEL_NAME, LLM_PARSER_TIMEOUT
+from config.llm import DASHSCOPE_API_BASE, DASHSCOPE_API_KEY, DASHSCOPE_MODEL_NAME, LLM_CODEGEN_TIMEOUT, LLM_PARSER_TIMEOUT
 from config.upload import UPLOAD_DIR
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
 from pkg.amplicon.code_templates import generate_workflow_script
@@ -465,6 +465,178 @@ class ChatService:
             "user_message": user_message.to_dict(),
         }
 
+    # ─── Reference markdown directory for Amplicon tools ───
+    _AMPLICON_REF_DIR = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "Amplicon", "reference")
+    )
+
+    @staticmethod
+    def _load_tool_reference_md(tool_id: str) -> str | None:
+        """根据 tool_id 加载 scripts/Amplicon/reference 下对应的 markdown 文档。"""
+        if not tool_id or not tool_id.startswith("amp-"):
+            return None
+        name = tool_id[4:]
+        if not os.path.isdir(ChatService._AMPLICON_REF_DIR):
+            return None
+        candidates = [
+            f for f in os.listdir(ChatService._AMPLICON_REF_DIR)
+            if f.endswith(f"_{name}.md")
+        ]
+        if not candidates:
+            return None
+        try:
+            with open(os.path.join(ChatService._AMPLICON_REF_DIR, candidates[0]), "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            logger.warning(f"[ChatService] 读取 {tool_id} 参考文档失败: {e}")
+            return None
+
+    @staticmethod
+    def _generate_orchestrator_with_llm(
+        tool_ids: list[str],
+        tool_chain: list[dict],
+        file_mappings: list[dict],
+        required_files: list[dict],
+        extra_params: dict | None = None,
+        task_id: int | None = None,
+    ) -> str | None:
+        """根据工具链参考文档，用 LLM 生成完整 bash 编排脚本。"""
+        if not tool_ids:
+            return None
+
+        try:
+            if not DASHSCOPE_API_KEY:
+                logger.warning("[ChatService] DASHSCOPE_API_KEY 为空，跳过 LLM 编排脚本生成")
+                return None
+
+            extra = extra_params or {}
+
+            # ─── 加载每个工具的参考文档 ───
+            md_sections = []
+            for tid in tool_ids:
+                md = ChatService._load_tool_reference_md(tid)
+                tool_info = next((t for t in tool_chain if isinstance(t, dict) and t.get("id") == tid), {})
+                tool_name = tool_info.get("name") or tool_info.get("label") or tid
+                if md:
+                    md_sections.append(f"## 工具: {tool_name} (tool_id={tid})\n{md}\n")
+                else:
+                    md_sections.append(
+                        f"## 工具: {tool_name} (tool_id={tid})\n"
+                        f"未找到参考文档。输入: {tool_info.get('inputs', [])}\n"
+                        f"输出: {tool_info.get('outputs', [])}\n"
+                    )
+            docs_content = "\n".join(md_sections)
+
+            # ─── 构造工具链摘要 ───
+            chain_lines = []
+            for i, tid in enumerate(tool_ids, start=1):
+                tool_info = next((t for t in tool_chain if isinstance(t, dict) and t.get("id") == tid), {})
+                name = tool_info.get("name") or tool_info.get("label") or tid
+                inputs = tool_info.get("inputs", [])
+                outputs = tool_info.get("outputs", [])
+                chain_lines.append(
+                    f"步骤 {i}/{len(tool_ids)}: {name} (tool_id={tid})\n"
+                    f"  输入数据类型: {inputs}\n"
+                    f"  输出数据类型: {outputs}"
+                )
+            chain_summary = "\n".join(chain_lines)
+
+            # ─── 构造上传文件描述 ───
+            upload_lines = []
+            for fm in file_mappings:
+                upload_lines.append(
+                    f"- slot_label={fm.get('slot_label')}, "
+                    f"original_name={fm.get('original_name')}, "
+                    f"stored_name={fm.get('stored_name')}"
+                )
+            upload_desc = "\n".join(upload_lines) or "无"
+
+            # ─── 构造 required_files 描述 ───
+            rf_lines = []
+            for rf in required_files:
+                rf_lines.append(
+                    f"- label={rf.get('label')}, typeId={rf.get('typeId')}, "
+                    f"extensions={rf.get('extensions', [])}, required={rf.get('required', True)}"
+                )
+            required_files_desc = "\n".join(rf_lines) or "无"
+
+            system_prompt = """你是一个生物信息分析流程编排专家。请根据用户选择的分析工具链、每个工具的参考文档、用户上传的文件信息，生成一个完整的可执行 bash 脚本。
+
+要求：
+1. 以 `#!/bin/bash` 开头，使用 `set -euo pipefail`。
+2. 顶部 export：`export PATH=/opt/conda/bin:$PATH` 和 `export AMPLICON_ROOT=/opt/amplicon`。
+3. 所有步骤按工具链顺序执行，使用 `bash ${AMPLICON_ROOT}/scripts/stepX_*.sh` 调用（具体脚本路径参考每个工具的参考文档）。
+4. 上一步的输出必须作为下一步的输入。如果文件名不匹配，必须显式重命名或创建 symlink，不能假设文件名自动一致。
+5. 用户上传文件都在 `/shared/` 目录下，脚本中使用 `/shared/<stored_name>` 引用。
+6. 对于多样本工具（如 cutadapt、flash、frags_qc），使用 for 循环按样本处理。
+7. DADA2 需要先生成 manifest.tsv 再执行。
+8. 元数据文件（如果存在）通过 `-metadata` 或参考文档中的参数传入。
+9. 引物序列已提供，请按参考文档要求传入。
+10. 每步输出进度日志：`echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step X/N] 正在执行: <tool_name>"`。
+11. 只输出 bash 脚本内容，不要解释、不要 markdown 代码块。
+12. 文件类型和文件名必须严格与参考文档一致，不能搞错。"""
+
+            user_message = f"""请根据以下信息生成完整的执行脚本：
+
+## 任务ID
+{task_id or 'N/A'}
+
+## 工具链（按执行顺序）
+{chain_summary}
+
+## 用户上传文件
+{upload_desc}
+
+## 文件需求定义
+{required_files_desc}
+
+## 额外参数
+- primer_f: {extra.get('primer_f', '')}
+- primer_r: {extra.get('primer_r', '')}
+- metadata_stored: {extra.get('metadata_stored', '')}
+
+## 各工具参考文档
+{docs_content}
+
+请生成一个把这些工具串联起来的完整 bash 脚本，确保每一步的输入输出正确衔接。"""
+
+            prompt_size = len(system_prompt) + len(user_message)
+            logger.info(f"[ChatService] 开始 LLM 编排脚本生成: {len(tool_ids)} 个工具, prompt={prompt_size} 字符")
+
+            codegen_timeout = max(LLM_CODEGEN_TIMEOUT, 300)
+            response = httpx.post(
+                f"{DASHSCOPE_API_BASE}/chat/completions",
+                headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
+                json={
+                    "model": DASHSCOPE_MODEL_NAME,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    "temperature": 0.3,
+                },
+                timeout=httpx.Timeout(codegen_timeout, connect=30.0),
+            )
+            response.raise_for_status()
+            result = response.json()
+            generated = result["choices"][0]["message"]["content"]
+
+            # 去掉可能的 markdown 代码块包裹
+            if "```bash" in generated:
+                generated = generated.split("```bash", 1)[1].split("```", 1)[0]
+            elif "```" in generated:
+                generated = generated.split("```", 1)[1].split("```", 1)[0]
+
+            generated = generated.strip()
+            logger.info(f"[ChatService] LLM 编排脚本生成完成: {len(generated)} 字符")
+            return generated
+
+        except Exception as e:
+            import traceback
+            logger.error(f"[ChatService] LLM 编排脚本生成失败: {type(e).__name__}: {e}")
+            logger.error(traceback.format_exc())
+            return None
+
     @staticmethod
     def _generate_script_with_llm(
         script_parts: list,
@@ -682,10 +854,12 @@ class ChatService:
 
         # ─── 生成编排脚本 ───
         candidate_data_str = fr_message.workflow_candidates or "{}"
+        candidate: dict = {}
+        tool_chain: list[dict] = []
         try:
             candidate = json.loads(candidate_data_str)
+            tool_chain = candidate.get("tool_chain", [])
             if not tool_ids:
-                tool_chain = candidate.get("tool_chain", [])
                 tool_ids = [t["id"] for t in tool_chain if isinstance(t, dict) and "id" in t]
         except (json.JSONDecodeError, TypeError):
             pass
@@ -702,14 +876,16 @@ class ChatService:
             "metadata_stored": metadata_stored,
         }
 
-        generated_code = ""
+        generated_code_algo = ""
+        generated_code_llm = ""
         if tool_ids:
+            # ─── 1. 算法生成编排脚本 ───
             try:
                 # 期三：读取任务所属领域（旧任务回退 amplicon）
                 domain_id = task.domain_id or DomainService.get_amplicon_domain(db).id
                 call_defs = DomainService.get_call_defs(db, domain_id, tool_ids)
                 tool_names = DomainService.get_tool_names(db, domain_id)
-                generated_code = generate_orchestrator_script(
+                generated_code_algo = generate_orchestrator_script(
                     tool_ids=tool_ids,
                     call_defs=call_defs,
                     tool_names=tool_names,
@@ -718,10 +894,31 @@ class ChatService:
                     extra_params=extra_params,
                     task_id=task.id,
                 )
-                logger.info(f"[ChatService] 编排脚本生成完成: {len(generated_code)} 字符")
+                logger.info(f"[ChatService] 算法编排脚本生成完成: {len(generated_code_algo)} 字符")
             except Exception as e:
-                logger.error(f"[ChatService] 编排脚本生成失败: {e}")
-                generated_code = f"# 编排脚本生成失败: {e}\n# tool_ids: {tool_ids}\n"
+                logger.error(f"[ChatService] 算法编排脚本生成失败: {e}")
+                generated_code_algo = f"# 编排脚本生成失败: {e}\n# tool_ids: {tool_ids}\n"
+
+            # ─── 2. LLM 生成编排脚本 ───
+            try:
+                generated_code_llm = ChatService._generate_orchestrator_with_llm(
+                    tool_ids=tool_ids,
+                    tool_chain=tool_chain,
+                    file_mappings=enriched_mappings,
+                    required_files=required_files_info,
+                    extra_params=extra_params,
+                    task_id=task.id,
+                )
+                if not generated_code_llm:
+                    generated_code_llm = f"# LLM 编排脚本生成失败或未返回内容\n# tool_ids: {tool_ids}\n"
+            except Exception as e:
+                logger.error(f"[ChatService] LLM 编排脚本生成调用失败: {e}")
+                generated_code_llm = f"# LLM 编排脚本生成失败: {e}\n# tool_ids: {tool_ids}\n"
+
+        result_payload = json.dumps({
+            "script1": generated_code_algo,
+            "script2": generated_code_llm,
+        }, ensure_ascii=False)
 
         # 创建用户消息
         file_names = "、".join(fm["original_name"] for fm in file_mappings)
@@ -734,12 +931,13 @@ class ChatService:
         )
         user_message.save(db)
 
-        # 创建助手消息（校验通过 + 生成的编排脚本）
+        # 创建助手消息（校验通过 + 生成的两份编排脚本）
         assistant_content = (
             "✅ 文件校验完成！\n\n"
             "• 文件格式: 正确\n"
             "• 文件完整性: 通过\n"
-            "• 编排脚本: 已生成\n\n"
+            "• 执行代码1（算法编排）: 已生成\n"
+            "• 执行代码2（LLM 编排）: 已生成\n\n"
             "所有文件已就绪，可以开始执行分析任务。"
         )
         assistant_message = Message(
@@ -748,7 +946,7 @@ class ChatService:
             type="text",
             content=assistant_content,
             data=json.dumps({"upload_validated": True}, ensure_ascii=False),
-            result_content=generated_code,
+            result_content=result_payload,
             workflow_candidates=fr_message.workflow_candidates,
         )
         assistant_message.save(db)
@@ -765,6 +963,7 @@ class ChatService:
         task_uuid: str,
         project_id: int,
         user_id: int,
+        script_index: int = 1,
     ) -> dict:
         """提交 qsub 任务执行"""
         task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
@@ -772,7 +971,7 @@ class ChatService:
         if task.status in ("running", "completed"):
             raise ValueError(f"任务当前状态为 {task.status}，不可重复执行")
 
-        logger.info(f"[ChatService] 开始执行: task={task.id}")
+        logger.info(f"[ChatService] 开始执行: task={task.id}, script_index={script_index}")
 
         # 获取 tool_ids（从 select_path 消息）
         select_msg = (
@@ -831,19 +1030,35 @@ export PATH=/opt/conda/bin:$PATH
             except (json.JSONDecodeError, AttributeError):
                 pass
 
-        # 优先使用生成的真实代码
+        # 优先使用生成的真实代码；支持双脚本 JSON 结构 {script1, script2}
         generated_code = ""
+        source_message = None
         if validated_message and validated_message.result_content:
-            generated_code = validated_message.result_content
+            source_message = validated_message
         elif fr_message and fr_message.result_content:
-            generated_code = fr_message.result_content
+            source_message = fr_message
+
+        if source_message and source_message.result_content:
+            raw_content = source_message.result_content
+            try:
+                parsed = json.loads(raw_content)
+                if isinstance(parsed, dict):
+                    key = f"script{script_index}"
+                    generated_code = parsed.get(key, "")
+                    # 兜底：如果指定 key 不存在，使用整个原始内容（兼容旧数据）
+                    if not generated_code:
+                        generated_code = raw_content
+                else:
+                    generated_code = raw_content
+            except (json.JSONDecodeError, TypeError):
+                generated_code = raw_content
 
         if generated_code:
             script = sge_header + "\n"
             if file_env_lines:
                 script += "# 上传文件路径\n" + "\n".join(file_env_lines) + "\n\n"
             script += generated_code
-            logger.info(f"[ChatService] 使用生成的真实代码 (length={len(generated_code)})")
+            logger.info(f"[ChatService] 使用生成的真实代码 (script_index={script_index}, length={len(generated_code)})")
         else:
             script = sge_header + f"""
 echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Job Started =========="

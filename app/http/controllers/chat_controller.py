@@ -110,6 +110,7 @@ class ChatController:
         project_id: int,
         user_id: int,
         db: Session,
+        script_index: int = 1,
     ) -> JSONResponse:
         try:
             result = ChatService.start_execution(
@@ -117,6 +118,7 @@ class ChatController:
                 task_uuid=task_uuid,
                 project_id=project_id,
                 user_id=user_id,
+                script_index=script_index,
             )
             return JSONResponse(status_code=status.HTTP_200_OK, content=result)
         except ValueError as e:
