@@ -1,0 +1,16 @@
+# 统一行尾为 LF（覆盖 core.autocrlf=true 的默认行为），
+# 避免 Windows 上 CRLF/LF 翻转导致整文件 diff 与 blame 污染。
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.db binary
+*.qza binary
+*.fastq binary
+*.fasta binary
+*.biom binary
