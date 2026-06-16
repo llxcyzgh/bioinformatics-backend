@@ -338,7 +338,9 @@ class ScriptService:
     ) -> dict:
         """
         文件夹上传：files 与 paths 同序，paths 为浏览器相对路径（含所选根目录）。
-        按「相对路径去扩展名」配对 .sh + .md；子目录（去掉所选根）作为分类文件夹。
+        配对 key = (分类路径, 文件名基名)；分类路径会剥掉所选根与「类型桶」目录
+        （scripts/reference/代码/文档…），从而支持 .sh 与 .md 分置于不同子目录的结构
+        （如 root/scripts/foo.sh + root/reference/foo.md）。
         从 .md 确定性解析元数据建图；.sh 落盘用于执行。新建脚本默认未校验/未启用。
         """
         import re
@@ -348,15 +350,33 @@ class ScriptService:
         domain = Domain.find(db, domain_id) if domain_id else None
         domain_code = (domain.code if domain else "tool") or "tool"
 
-        # 1) 配对：key = 相对路径去扩展名
+        # 1) 配对：key = (分类路径, 文件名基名)
         SH_EXTS = {".sh"}
         MD_EXTS = {".md", ".markdown"}
-        pairs: dict[str, dict] = {}
-        warnings = {"orphan_sh": [], "orphan_md": [], "ignored": []}
+        # 「类型桶」目录名：配对时剥掉，使 .sh/.md 分目录也能配对
+        _BUCKETS_EN = {"scripts", "reference", "sh", "md", "src", "source", "doc", "docs", "code", "bin", "shell", "mds", "shs"}
+        _BUCKETS_CN = {"代码", "文档", "脚本", "说明", "源码", "描述"}
+
+        def _is_bucket(seg: str) -> bool:
+            return seg.lower() in _BUCKETS_EN or seg in _BUCKETS_CN
+
+        def _rel_meta(rel: str):
+            """返回 (基名key小写, ext小写, 分类, 显示基名)。"""
+            parts = [p for p in rel.replace("\\", "/").split("/") if p]
+            fname = parts[-1] if parts else rel
+            name, ext = os.path.splitext(fname)
+            # 目录：去掉首段（所选根）与文件名，再剥掉尾部「类型桶」目录
+            dirs = parts[1:-1] if len(parts) >= 2 else []
+            while dirs and _is_bucket(dirs[-1]):
+                dirs = dirs[:-1]
+            return name.lower(), ext.lower(), "/".join(dirs), name
+
+        pairs: dict[str, dict] = {}  # pkey -> {"sh": [...], "md": [...], "cat": str, "rel": str}
+        warnings = {"orphan_sh": [], "orphan_md": [], "conflict": [], "ignored": []}
 
         for f, raw_path in zip(files, paths):
             rel = (raw_path or f.filename or "").replace("\\", "/")
-            ext = os.path.splitext(rel)[1].lower()
+            base_key, ext, cat, _disp = _rel_meta(rel)
             if ext in SH_EXTS:
                 kind = "sh"
             elif ext in MD_EXTS:
@@ -364,16 +384,9 @@ class ScriptService:
             else:
                 warnings["ignored"].append(rel)
                 continue
-            key = rel[: -len(ext)] if ext else rel  # 去扩展名
-            bucket = pairs.setdefault(key, {"sh": None, "md": None, "rel": rel})
-            bucket[kind] = f
-
-        # 2) 分类文件夹：key 目录部分去掉首个段（所选根）
-        def category_of(key: str) -> str:
-            parts = key.split("/")
-            # 去掉首段（所选根）和末段（文件名），中间为分类
-            mid = parts[1:-1]
-            return "/".join(mid)
+            pkey = f"{cat}\0{base_key}"
+            bucket = pairs.setdefault(pkey, {"sh": [], "md": [], "cat": cat, "rel": rel})
+            bucket[kind].append(f)
 
         folder_cache: dict[str, int] = {}
 
@@ -393,18 +406,21 @@ class ScriptService:
         # 3) 逐对处理
         created = []
         seen_tool_ids = set()
-        for key, bucket in pairs.items():
-            sh_f, md_f = bucket["sh"], bucket["md"]
-            if sh_f and not md_f:
+        for pkey, bucket in pairs.items():
+            shs, mds, cat = bucket["sh"], bucket["md"], bucket["cat"]
+            # 同分类+同基名出现多个 .sh 或 .md：歧义，跳过并报告
+            if len(shs) > 1 or len(mds) > 1:
+                warnings["conflict"].append(bucket["rel"])
+                continue
+            if shs and not mds:
                 warnings["orphan_sh"].append(bucket["rel"])
                 continue
-            if md_f and not sh_f:
+            if mds and not shs:
                 warnings["orphan_md"].append(bucket["rel"])
                 continue
-            if not sh_f or not md_f:
+            if not shs or not mds:
                 continue
-
-            cat = category_of(key)
+            sh_f, md_f = shs[0], mds[0]
             folder_id = get_or_create_folder(cat)
 
             # 解析 .md
@@ -461,6 +477,7 @@ class ScriptService:
             DomainService.invalidate(domain_id)
         logger.info(
             f"[upload_library] 领域={domain_id} 配对成功={len(created)} "
-            f"孤立sh={len(warnings['orphan_sh'])} 孤立md={len(warnings['orphan_md'])} 忽略={len(warnings['ignored'])}"
+            f"孤立sh={len(warnings['orphan_sh'])} 孤立md={len(warnings['orphan_md'])} "
+            f"歧义={len(warnings['conflict'])} 忽略={len(warnings['ignored'])}"
         )
         return {"created": created, "warnings": warnings}
