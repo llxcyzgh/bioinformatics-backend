@@ -32,6 +32,16 @@ def get_domain_graph(domain_id: int, db: Session = Depends(get_db)):
     return DomainController.get_graph(domain_id, db)
 
 
+@router.post("/{domain_id}/rebuild-graph")
+def rebuild_domain_graph(
+    domain_id: int,
+    current_user: User = RequireAdmin,
+    db: Session = Depends(get_db),
+):
+    """手动重建该领域的工具图（管理员）。"""
+    return DomainController.rebuild_graph(domain_id, db)
+
+
 @router.post("/")
 def create_domain(
     req: CreateDomainRequest,

@@ -9,6 +9,7 @@ from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from app.models import Script
+from app.services.domain_service import DomainService
 from config.llm import DASHSCOPE_API_KEY, DASHSCOPE_API_BASE, DASHSCOPE_MODEL_NAME, LLM_PARSER_TIMEOUT
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,16 @@ def _parse_script_io_llm(script_content: str) -> dict:
 
 
 class ScriptService:
+
+    @staticmethod
+    def _invalidate_for(script: "Script") -> None:
+        """脚本写操作后失效其所属领域的工具缓存，使建图/规划器读到最新数据。"""
+        domain_id = getattr(script, "domain_id", None)
+        if domain_id:
+            DomainService.invalidate(domain_id)
+        else:
+            # 未归属领域的脚本：清空全部缓存兜底
+            DomainService.invalidate(None)
 
     @staticmethod
     def list_scripts(
@@ -177,7 +188,7 @@ class ScriptService:
         except Exception as e:
             logger.warning(f"[ScriptService] 脚本 IO 解析异常: {e}")
 
-        return ScriptService.create(
+        script = ScriptService.create(
             db=db,
             name=name,
             folder_id=folder_id,
@@ -195,6 +206,8 @@ class ScriptService:
             valid_from=valid_from,
             valid_until=valid_until,
         )
+        ScriptService._invalidate_for(script)
+        return script
 
     @staticmethod
     def update(db: Session, script_id: int, **kwargs) -> Script:
@@ -204,7 +217,9 @@ class ScriptService:
         for key, value in kwargs.items():
             if hasattr(script, key) and value is not None:
                 setattr(script, key, value)
-        return script.save(db)
+        script = script.save(db)
+        ScriptService._invalidate_for(script)
+        return script
 
     @staticmethod
     def verify(db: Session, script_id: int, verified_by: int) -> Script:
@@ -213,7 +228,9 @@ class ScriptService:
             raise ValueError("Script not found")
         script.verified = 1
         script.verified_by = verified_by
-        return script.save(db)
+        script = script.save(db)
+        ScriptService._invalidate_for(script)
+        return script
 
     @staticmethod
     def toggle_active(db: Session, script_id: int) -> Script:
@@ -221,14 +238,21 @@ class ScriptService:
         if not script:
             raise ValueError("Script not found")
         script.is_active = 0 if script.is_active else 1
-        return script.save(db)
+        script = script.save(db)
+        ScriptService._invalidate_for(script)
+        return script
 
     @staticmethod
     def delete(db: Session, script_id: int) -> dict:
         script = Script.find(db, script_id)
         if not script:
             raise ValueError("Script not found")
+        domain_id = getattr(script, "domain_id", None)
         script.delete(db)
+        if domain_id:
+            DomainService.invalidate(domain_id)
+        else:
+            DomainService.invalidate(None)
         return {"detail": "Deleted"}
 
     @staticmethod

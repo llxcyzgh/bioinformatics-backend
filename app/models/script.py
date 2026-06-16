@@ -27,7 +27,8 @@ class Script(Model):
     cost = Column(Float, nullable=False, default=0.0)
     weight = Column(Integer, nullable=False, default=0)
     verified = Column(Integer, nullable=False, default=0)
-    is_active = Column(Integer, nullable=False, default=1)
+    # 默认未启用：新上传脚本需先人工校验(verified=1)后才能启用(is_active=1)，启用后方进入建图
+    is_active = Column(Integer, nullable=False, default=0)
     uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=False, default=0)
     verified_by = Column(Integer, ForeignKey("users.id"), nullable=False, default=0)
     valid_from = Column(String, nullable=False, default='')

@@ -63,3 +63,22 @@ class DomainController:
             return JSONResponse(status_code=status.HTTP_200_OK, content={"data": graph})
         except ValueError as e:
             return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": str(e)})
+
+    @staticmethod
+    def rebuild_graph(domain_id: int, db: Session) -> JSONResponse:
+        """手动重建工具图：清缓存后重新推导，返回节点/边数。"""
+        try:
+            DomainService.get(db, domain_id)  # 404 if missing
+            DomainService.invalidate(domain_id)
+            graph = DomainService.get_graph(db, domain_id)
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "data": {
+                        "nodes": len(graph.get("nodes", [])),
+                        "edges": len(graph.get("edges", [])),
+                    }
+                },
+            )
+        except ValueError as e:
+            return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": str(e)})
