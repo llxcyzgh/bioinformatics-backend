@@ -3,6 +3,8 @@
 每个步骤调用独立的 sh 脚本，通过参数传递 input/output 文件。
 """
 
+import os
+
 from .script_registry import ScriptCallDef, COMMON_PRIMERS
 
 
@@ -106,6 +108,11 @@ def generate_orchestrator_script(
     lines.append("# 工具链: " + " → ".join(
         tool_names.get(tid, tid) for tid in tool_ids
     ))
+    # SGE 并行环境（可选）：设了 BIOFLOW_SGE_PE（如 "make 8"）才申请多 slot。
+    # 否则单 slot、bash & 仍并发但时分复用。需与 BIOFLOW_MAX_PARALLEL 配套。
+    pe = os.getenv("BIOFLOW_SGE_PE", "").strip()
+    if pe:
+        lines.append(f"#$ -pe {pe}")
     lines.append("")
     lines.append("set -euo pipefail")
     lines.append("")
@@ -150,50 +157,51 @@ def generate_orchestrator_script(
     step_num = 0
     total_steps = len(tool_ids)
 
-    for tool_id in tool_ids:
+    i = 0
+    while i < len(tool_ids):
+        tool_id = tool_ids[i]
         call_def = call_defs.get(tool_id)
         tool_name = tool_names.get(tool_id, tool_id)
-        tool_overrides = (param_overrides or {}).get(tool_id, {})
 
         if not call_def:
             lines.append(f"# ⚠ 未找到 {tool_id} 的脚本注册，跳过")
             lines.append("")
+            i += 1
             continue
 
-        step_num += 1
-        lines.append(f"# ─── Step {step_num}/{total_steps}: {tool_name} ───")
-        if task_id is not None:
-            lines.append(f'_log "INFO" "Step {step_num}/{total_steps}: {tool_name} 开始"')
-        else:
-            lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] [Step {step_num}/{total_steps}] {tool_name}..."')
+        # ─── 连续 per-sample 工具 → 合并成一个跨样本并行区 ───
+        if call_def.per_sample:
+            region: list[str] = []
+            while i < len(tool_ids):
+                cd = call_defs.get(tool_ids[i])
+                if cd and cd.per_sample:
+                    region.append(tool_ids[i])
+                    i += 1
+                else:
+                    break
+            step_num = _gen_parallel_region(
+                lines, region, call_defs, tool_names, samples, extra,
+                produced_files, step_num, total_steps, task_id, param_overrides,
+            )
+            for tid in region:
+                _register_region_outputs(tid, call_defs, produced_files)
+            continue
 
-        # ─── 特殊处理: per-sample 步骤 ───
-        if call_def.per_sample and tool_id == "amp-cutadapt":
-            _gen_cutadapt_loop(lines, call_def, samples, extra, produced_files, step_num, task_id, tool_overrides)
-        elif call_def.per_sample and tool_id == "amp-flash":
-            _gen_flash_loop(lines, call_def, samples, produced_files, step_num, task_id, tool_overrides)
-        elif call_def.per_sample and tool_id == "amp-frags-qc":
-            _gen_frags_qc_loop(lines, call_def, samples, produced_files, step_num, task_id, tool_overrides)
-        elif tool_id == "amp-dada2":
+        # ─── 非 per-sample（dada2 / 通用）: 单次执行，天然在并行区的 wait 之后 ───
+        step_num += 1
+        tool_overrides = (param_overrides or {}).get(tool_id, {})
+        _emit_step_header(lines, step_num, total_steps, tool_name, task_id)
+        if tool_id == "amp-dada2":
             # DADA2 需要 manifest，先生成 manifest 再调用
             _gen_dada2_step(lines, call_def, samples, produced_files, step_num, task_id, tool_overrides)
         else:
-            # 通用步骤
             if task_id is not None:
                 lines.append(f'_log "INFO" "Step {step_num}/{total_steps}: {tool_name} 执行中"')
-            cmd = _build_single_command(call_def, produced_files, extra, tool_overrides)
-            lines.append(cmd)
-
-        # 注册输出
+            lines.append(_build_single_command(call_def, produced_files, extra, tool_overrides))
         for out in call_def.outputs:
-            fname = out.filename.replace("${sample}", "")
-            produced_files[out.data_type] = fname
-
-        if task_id is not None:
-            lines.append(f'_log "INFO" "Step {step_num}/{total_steps}: {tool_name} 完成"')
-        else:
-            lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Step {step_num} 完成"')
-        lines.append("")
+            produced_files[out.data_type] = out.filename.replace("${sample}", "")
+        _emit_step_footer(lines, step_num, total_steps, tool_name, task_id)
+        i += 1
 
     return "\n".join(lines) + "\n"
 
@@ -224,27 +232,17 @@ def _emit_call(lines: list[str], script_path: str, args: list[str]) -> None:
         lines.append(f'    {a}{sep}')
 
 
-def _gen_cutadapt_loop(
-    lines: list[str], call_def, samples: dict, extra: dict, produced: dict,
-    step_num: int, task_id: int | None, tool_overrides: dict,
-):
-    """生成 Cutadapt per-sample 循环。"""
+def _gen_cutadapt_body(lines, call_def, extra: dict, tool_overrides: dict,
+                       step_num: int, task_id: int | None, indent: str = ""):
+    """单个样本的 Cutadapt 片段（不含 for/done/SAMPLES，供并行区子shell调用）。"""
     primer_f = extra.get("primer_f", COMMON_PRIMERS["16S V3-V4"]["f"])
     primer_r = extra.get("primer_r", COMMON_PRIMERS["16S V3-V4"]["r"])
-
-    lines.append("SAMPLES=({})".format(
-        " ".join(f'"{s}"' for s in samples.keys())
-    ))
-    lines.append("for SAMPLE in \"${SAMPLES[@]}\"; do")
-    lines.append("  R1_FILE=\"/shared/${SAMPLE}.R1.fastq.gz\"")
-    lines.append("  R2_FILE=\"/shared/${SAMPLE}.R2.fastq.gz\"")
-    lines.append("  # 查找实际文件名")
-    lines.append("  for f in /shared/${SAMPLE}*.R1*; do R1_FILE=\"$f\"; break; done")
-    lines.append("  for f in /shared/${SAMPLE}*.R2*; do R2_FILE=\"$f\"; break; done")
+    lines.append(f'{indent}R1_FILE="/shared/${{SAMPLE}}.R1.fastq.gz"')
+    lines.append(f'{indent}R2_FILE="/shared/${{SAMPLE}}.R2.fastq.gz"')
+    lines.append(f'{indent}for f in /shared/${{SAMPLE}}*.R1*; do R1_FILE="$f"; break; done')
+    lines.append(f'{indent}for f in /shared/${{SAMPLE}}*.R2*; do R2_FILE="$f"; break; done')
     if task_id is not None:
-        lines.append(f'  _log "INFO" "Step {step_num}: cutadapt 开始处理样本 ${{SAMPLE}}"')
-    else:
-        lines.append('  echo "  处理样本: ${SAMPLE}"')
+        lines.append(f'{indent}_log "INFO" "Step {step_num}: cutadapt ${{SAMPLE}}"')
     args = [
         '-r1 "${R1_FILE}"',
         '-r2 "${R2_FILE}"',
@@ -253,59 +251,102 @@ def _gen_cutadapt_loop(
     ]
     args += _config_flags(tool_overrides, [("-e", "0.1"), ("-l", "100"), ("-n", "1")])
     _emit_call(lines, call_def.script_path, args)
+
+
+def _gen_flash_body(lines, call_def, tool_overrides: dict,
+                    step_num: int, task_id: int | None, indent: str = ""):
+    """单个样本的 FLASH 片段。"""
+    lines.append(f'{indent}TRIMMED_R1="${{SAMPLE}}.cutadapt.R1.fastq.gz"')
+    lines.append(f'{indent}TRIMMED_R2="${{SAMPLE}}.cutadapt.R2.fastq.gz"')
     if task_id is not None:
-        lines.append(f'  _log "INFO" "Step {step_num}: cutadapt 完成处理样本 ${{SAMPLE}}"')
-    lines.append("done")
-    lines.append("")
-
-    # 注册输出
-    # Cutadapt 的输出会在当前目录下，DADA2 的 manifest 会引用它们
-    first_sample = next(iter(samples.keys())) if samples else "sample"
-    produced["TRIMMED_R1"] = f"${{{first_sample}}}.cutadapt.R1.fastq.gz"
-    produced["TRIMMED_R2"] = f"${{{first_sample}}}.cutadapt.R2.fastq.gz"
-
-
-def _gen_flash_loop(
-    lines: list[str], call_def, samples: dict, produced: dict,
-    step_num: int, task_id: int | None, tool_overrides: dict,
-):
-    """生成 FLASH per-sample 循环。"""
-    lines.append("for SAMPLE in \"${SAMPLES[@]}\"; do")
-    lines.append("  TRIMMED_R1=\"${SAMPLE}.cutadapt.R1.fastq.gz\"")
-    lines.append("  TRIMMED_R2=\"${SAMPLE}.cutadapt.R2.fastq.gz\"")
-    if task_id is not None:
-        lines.append(f'  _log "INFO" "Step {step_num}: FLASH 开始合并样本 ${{SAMPLE}}"')
-    else:
-        lines.append('  echo "  FLASH 合并: ${SAMPLE}"')
+        lines.append(f'{indent}_log "INFO" "Step {step_num}: FLASH ${{SAMPLE}}"')
     args = ['-1 "${TRIMMED_R1}"', '-2 "${TRIMMED_R2}"']
     args += _config_flags(tool_overrides, [("-m", "10"), ("-M", "250"), ("-x", "0.1"), ("-t", "1")])
     _emit_call(lines, call_def.script_path, args)
-    if task_id is not None:
-        lines.append(f'  _log "INFO" "Step {step_num}: FLASH 完成合并样本 ${{SAMPLE}}"')
-    lines.append("done")
-    first_sample = next(iter(samples.keys())) if samples else "sample"
-    produced["FASTQ_MERGED"] = f"${{{first_sample}}}.out.extendedFrags.fastq"
 
 
-def _gen_frags_qc_loop(
-    lines: list[str], call_def, samples: dict, produced: dict,
-    step_num: int, task_id: int | None, tool_overrides: dict,
-):
-    """生成 Frags QC per-sample 循环。"""
-    lines.append("for SAMPLE in \"${SAMPLES[@]}\"; do")
-    lines.append("  MERGED=\"${SAMPLE}.out.extendedFrags.fastq\"")
+def _gen_frags_qc_body(lines, call_def, tool_overrides: dict,
+                       step_num: int, task_id: int | None, indent: str = ""):
+    """单个样本的 Frags QC 片段。"""
+    lines.append(f'{indent}MERGED="${{SAMPLE}}.out.extendedFrags.fastq"')
     if task_id is not None:
-        lines.append(f'  _log "INFO" "Step {step_num}: Frags QC 开始处理样本 ${{SAMPLE}}"')
-    else:
-        lines.append('  echo "  质控: ${SAMPLE}"')
+        lines.append(f'{indent}_log "INFO" "Step {step_num}: Frags QC ${{SAMPLE}}"')
     args = ['-i "${MERGED}"']
     args += _config_flags(tool_overrides, [("-q", "19"), ("-u", "15"), ("-d", "")])
     _emit_call(lines, call_def.script_path, args)
+
+
+def _register_region_outputs(tool_id: str, call_defs: dict, produced: dict) -> None:
+    """注册 per-sample 区工具输出（装饰性：dada2 直接读 samples，不读 produced）。"""
+    cd = call_defs.get(tool_id)
+    if not cd:
+        return
+    for out in cd.outputs:
+        produced[out.data_type] = out.filename.replace("${sample}", "")
+
+
+def _emit_step_header(lines, step_num: int, total_steps: int, tool_name: str, task_id) -> None:
+    lines.append(f"# ─── Step {step_num}/{total_steps}: {tool_name} ───")
     if task_id is not None:
-        lines.append(f'  _log "INFO" "Step {step_num}: Frags QC 完成处理样本 ${{SAMPLE}}"')
+        lines.append(f'_log "INFO" "Step {step_num}/{total_steps}: {tool_name} 开始"')
+    else:
+        lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] [Step {step_num}/{total_steps}] {tool_name}..."')
+
+
+def _emit_step_footer(lines, step_num: int, total_steps: int, tool_name: str, task_id) -> None:
+    if task_id is not None:
+        lines.append(f'_log "INFO" "Step {step_num}/{total_steps}: {tool_name} 完成"')
+    else:
+        lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Step {step_num} 完成"')
+    lines.append("")
+
+
+def _gen_parallel_region(lines, region_ids: list[str], call_defs: dict, tool_names: dict,
+                         samples: dict, extra: dict, produced: dict,
+                         step_num: int, total_steps: int, task_id, param_overrides) -> int:
+    """把连续的 per-sample 工具合并成一个跨样本并行区。
+
+    每个样本在后台子shell内按序跑完整条链（cutadapt→flash→frags_qc，文件名依赖决定顺序），
+    跨样本并行；显式 wait 屏障后再由调用方跑 dada2 等汇合步骤。返回新的 step_num。
+    """
+    start = step_num + 1
+    end = step_num + len(region_ids)
+    label = " → ".join(tool_names.get(t, t) for t in region_ids)
+    lines.append(f"# ─── Step {start}-{end}/{total_steps}: {label}（per-sample 并行） ───")
+    if task_id is not None:
+        lines.append(f'_log "INFO" "Steps {start}-{end}/{total_steps}: 并行预处理开始"')
+    else:
+        lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] [Steps {start}-{end}/{total_steps}] 并行预处理..."')
+
+    lines.append("SAMPLES=({})".format(" ".join(f'"{s}"' for s in samples.keys())))
+    lines.append('MAX_JOBS="${BIOFLOW_MAX_PARALLEL:-4}"')
+    lines.append('if [ "$MAX_JOBS" -lt 1 ] 2>/dev/null; then MAX_JOBS=1; fi')
+    lines.append("_JOB_I=0")
+    lines.append('for SAMPLE in "${SAMPLES[@]}"; do')
+    lines.append("  (")
+    for idx, tid in enumerate(region_ids):
+        cd = call_defs.get(tid)
+        ov = (param_overrides or {}).get(tid, {})
+        s = step_num + idx + 1
+        if tid == "amp-cutadapt":
+            _gen_cutadapt_body(lines, cd, extra, ov, s, task_id, indent="    ")
+        elif tid == "amp-flash":
+            _gen_flash_body(lines, cd, ov, s, task_id, indent="    ")
+        elif tid == "amp-frags-qc":
+            _gen_frags_qc_body(lines, cd, ov, s, task_id, indent="    ")
+        else:
+            raise ValueError(f"per_sample 工具 {tid} 没有对应 body 生成器")
+    lines.append("  ) &")
+    lines.append("  _JOB_I=$((_JOB_I+1))")
+    lines.append('  if [ $((_JOB_I % MAX_JOBS)) -eq 0 ]; then wait || { echo "[FATAL] per-sample step failed" >&2; exit 1; }; fi')
     lines.append("done")
-    first_sample = next(iter(samples.keys())) if samples else "sample"
-    produced["FASTQ_QC"] = f"${{{first_sample}}}.fastq"
+    lines.append('wait || { echo "[FATAL] per-sample step failed" >&2; exit 1; }')
+    if task_id is not None:
+        lines.append(f'_log "INFO" "Steps {start}-{end}/{total_steps}: 并行预处理完成"')
+    else:
+        lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Steps {start}-{end} 完成"')
+    lines.append("")
+    return end
 
 
 def _gen_dada2_step(
