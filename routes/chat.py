@@ -83,6 +83,7 @@ def confirm_upload(
 class StartExecutionRequest(BaseModel):
     task_uuid: str = Field(min_length=1)
     project_id: int = Field(default=0)
+    script_index: int = Field(default=1, ge=1, le=2)
 
 
 @router.post("/start-execution")
@@ -96,6 +97,7 @@ def start_execution(
         project_id=request.project_id,
         user_id=current_user.id,
         db=db,
+        script_index=request.script_index,
     )
 
 
