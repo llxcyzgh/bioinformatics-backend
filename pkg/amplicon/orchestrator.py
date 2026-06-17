@@ -50,6 +50,7 @@ def generate_orchestrator_script(
     required_files: list[dict],
     extra_params: dict | None = None,
     task_id: int | None = None,
+    param_overrides: dict | None = None,
 ) -> str:
     """
     生成编排脚本。
@@ -62,6 +63,8 @@ def generate_orchestrator_script(
         required_files: resolve_required_files() 返回的文件需求列表
         extra_params: 额外参数 {"primer_f", "primer_r", "metadata_file", "group_list"}
         task_id: 任务 ID，用于生成日志标识
+        param_overrides: 用户在节点上改的参数 {tool_id: {flag: value}}，
+            只含白名单内、已通过校验的 _CONFIG 值；覆盖各工具 .sh 的默认值。
 
     Returns:
         生成的 bash 编排脚本字符串
@@ -150,6 +153,7 @@ def generate_orchestrator_script(
     for tool_id in tool_ids:
         call_def = call_defs.get(tool_id)
         tool_name = tool_names.get(tool_id, tool_id)
+        tool_overrides = (param_overrides or {}).get(tool_id, {})
 
         if not call_def:
             lines.append(f"# ⚠ 未找到 {tool_id} 的脚本注册，跳过")
@@ -165,19 +169,19 @@ def generate_orchestrator_script(
 
         # ─── 特殊处理: per-sample 步骤 ───
         if call_def.per_sample and tool_id == "amp-cutadapt":
-            _gen_cutadapt_loop(lines, call_def, samples, extra, produced_files, step_num, task_id)
+            _gen_cutadapt_loop(lines, call_def, samples, extra, produced_files, step_num, task_id, tool_overrides)
         elif call_def.per_sample and tool_id == "amp-flash":
-            _gen_flash_loop(lines, call_def, samples, produced_files, step_num, task_id)
+            _gen_flash_loop(lines, call_def, samples, produced_files, step_num, task_id, tool_overrides)
         elif call_def.per_sample and tool_id == "amp-frags-qc":
-            _gen_frags_qc_loop(lines, call_def, samples, produced_files, step_num, task_id)
+            _gen_frags_qc_loop(lines, call_def, samples, produced_files, step_num, task_id, tool_overrides)
         elif tool_id == "amp-dada2":
             # DADA2 需要 manifest，先生成 manifest 再调用
-            _gen_dada2_step(lines, call_def, samples, produced_files, step_num, task_id)
+            _gen_dada2_step(lines, call_def, samples, produced_files, step_num, task_id, tool_overrides)
         else:
             # 通用步骤
             if task_id is not None:
                 lines.append(f'_log "INFO" "Step {step_num}/{total_steps}: {tool_name} 执行中"')
-            cmd = _build_single_command(call_def, produced_files, extra)
+            cmd = _build_single_command(call_def, produced_files, extra, tool_overrides)
             lines.append(cmd)
 
         # 注册输出
@@ -194,8 +198,35 @@ def generate_orchestrator_script(
     return "\n".join(lines) + "\n"
 
 
+def _config_flags(tool_overrides: dict, specs: list[tuple[str, str]]) -> list[str]:
+    """按白名单 specs=[(flag, default)] 生成 config 参数串（override 优先；空值跳过）。
+
+    只输出经核实的 .sh 接受的 flag——per-sample .sh 用 `*) exit 1` 兜底，未知 flag 会崩。
+    """
+    out: list[str] = []
+    for flag, default in specs:
+        val = tool_overrides.get(flag, default)
+        if val is None or val == "":
+            continue
+        out.append(f"{flag} {val}")
+    return out
+
+
+def _emit_call(lines: list[str], script_path: str, args: list[str]) -> None:
+    """输出 `bash <path> arg1 ... `，反斜杠续行（首行 2 空格缩进，续行 4 空格）。"""
+    if not args:
+        lines.append(f'  bash ${{AMPLICON_ROOT}}/{script_path}')
+        return
+    lines.append(f'  bash ${{AMPLICON_ROOT}}/{script_path} \\')
+    last = len(args) - 1
+    for i, a in enumerate(args):
+        sep = " \\" if i < last else ""
+        lines.append(f'    {a}{sep}')
+
+
 def _gen_cutadapt_loop(
-    lines: list[str], call_def, samples: dict, extra: dict, produced: dict, step_num: int, task_id: int | None
+    lines: list[str], call_def, samples: dict, extra: dict, produced: dict,
+    step_num: int, task_id: int | None, tool_overrides: dict,
 ):
     """生成 Cutadapt per-sample 循环。"""
     primer_f = extra.get("primer_f", COMMON_PRIMERS["16S V3-V4"]["f"])
@@ -214,11 +245,14 @@ def _gen_cutadapt_loop(
         lines.append(f'  _log "INFO" "Step {step_num}: cutadapt 开始处理样本 ${{SAMPLE}}"')
     else:
         lines.append('  echo "  处理样本: ${SAMPLE}"')
-    lines.append(f'  bash ${{AMPLICON_ROOT}}/{call_def.script_path} \\')
-    lines.append('    -r1 "${R1_FILE}" \\')
-    lines.append('    -r2 "${R2_FILE}" \\')
-    lines.append(f'    -f "{primer_f}" \\')
-    lines.append(f'    -r "{primer_r}"')
+    args = [
+        '-r1 "${R1_FILE}"',
+        '-r2 "${R2_FILE}"',
+        f'-f "{primer_f}"',
+        f'-r "{primer_r}"',
+    ]
+    args += _config_flags(tool_overrides, [("-e", "0.1"), ("-l", "100"), ("-n", "1")])
+    _emit_call(lines, call_def.script_path, args)
     if task_id is not None:
         lines.append(f'  _log "INFO" "Step {step_num}: cutadapt 完成处理样本 ${{SAMPLE}}"')
     lines.append("done")
@@ -232,7 +266,8 @@ def _gen_cutadapt_loop(
 
 
 def _gen_flash_loop(
-    lines: list[str], call_def, samples: dict, produced: dict, step_num: int, task_id: int | None
+    lines: list[str], call_def, samples: dict, produced: dict,
+    step_num: int, task_id: int | None, tool_overrides: dict,
 ):
     """生成 FLASH per-sample 循环。"""
     lines.append("for SAMPLE in \"${SAMPLES[@]}\"; do")
@@ -242,9 +277,9 @@ def _gen_flash_loop(
         lines.append(f'  _log "INFO" "Step {step_num}: FLASH 开始合并样本 ${{SAMPLE}}"')
     else:
         lines.append('  echo "  FLASH 合并: ${SAMPLE}"')
-    lines.append(f'  bash ${{AMPLICON_ROOT}}/{call_def.script_path} \\')
-    lines.append('    -1 "${TRIMMED_R1}" \\')
-    lines.append('    -2 "${TRIMMED_R2}"')
+    args = ['-1 "${TRIMMED_R1}"', '-2 "${TRIMMED_R2}"']
+    args += _config_flags(tool_overrides, [("-m", "10"), ("-M", "250"), ("-x", "0.1"), ("-t", "1")])
+    _emit_call(lines, call_def.script_path, args)
     if task_id is not None:
         lines.append(f'  _log "INFO" "Step {step_num}: FLASH 完成合并样本 ${{SAMPLE}}"')
     lines.append("done")
@@ -253,7 +288,8 @@ def _gen_flash_loop(
 
 
 def _gen_frags_qc_loop(
-    lines: list[str], call_def, samples: dict, produced: dict, step_num: int, task_id: int | None
+    lines: list[str], call_def, samples: dict, produced: dict,
+    step_num: int, task_id: int | None, tool_overrides: dict,
 ):
     """生成 Frags QC per-sample 循环。"""
     lines.append("for SAMPLE in \"${SAMPLES[@]}\"; do")
@@ -262,8 +298,9 @@ def _gen_frags_qc_loop(
         lines.append(f'  _log "INFO" "Step {step_num}: Frags QC 开始处理样本 ${{SAMPLE}}"')
     else:
         lines.append('  echo "  质控: ${SAMPLE}"')
-    lines.append(f'  bash ${{AMPLICON_ROOT}}/{call_def.script_path} \\')
-    lines.append('    -i "${MERGED}"')
+    args = ['-i "${MERGED}"']
+    args += _config_flags(tool_overrides, [("-q", "19"), ("-u", "15"), ("-d", "")])
+    _emit_call(lines, call_def.script_path, args)
     if task_id is not None:
         lines.append(f'  _log "INFO" "Step {step_num}: Frags QC 完成处理样本 ${{SAMPLE}}"')
     lines.append("done")
@@ -272,7 +309,8 @@ def _gen_frags_qc_loop(
 
 
 def _gen_dada2_step(
-    lines: list[str], call_def, samples: dict, produced: dict, step_num: int, task_id: int | None
+    lines: list[str], call_def, samples: dict, produced: dict,
+    step_num: int, task_id: int | None, tool_overrides: dict,
 ):
     """生成 DADA2 步骤，包括 manifest 生成。"""
     lines.append("# 生成 manifest 文件")
@@ -286,9 +324,9 @@ def _gen_dada2_step(
     lines.append("")
     if task_id is not None:
         lines.append(f'_log "INFO" "Step {step_num}: DADA2 开始"')
-    lines.append(f'bash ${{AMPLICON_ROOT}}/{call_def.script_path} \\')
-    lines.append('  -m manifest.tsv \\')
-    lines.append('  -t 0 -n 12')
+    args = ['-m manifest.tsv']
+    args += _config_flags(tool_overrides, [("-t", "0"), ("-n", "12"), ("-a", "1")])
+    _emit_call(lines, call_def.script_path, args)
     if task_id is not None:
         lines.append(f'_log "INFO" "Step {step_num}: DADA2 完成"')
 
@@ -297,16 +335,19 @@ def _gen_dada2_step(
     produced["FEATURE_FASTA"] = "feature.fasta"
 
 
-def _build_single_command(call_def, produced: dict, extra: dict) -> str:
+def _build_single_command(call_def, produced: dict, extra: dict, tool_overrides: dict | None = None) -> str:
     """为通用工具构建单条 bash 命令。"""
+    tool_overrides = tool_overrides or {}
     cmd_parts = [f"bash ${{AMPLICON_ROOT}}/{call_def.script_path}"]
 
     for param in call_def.params:
         dt = param.data_type
 
         if dt == "_CONFIG":
-            if param.default:
-                cmd_parts.append(f'{param.flag} {param.default}')
+            # 用户在节点上改的值优先（已通过 confirm_upload 正则校验），否则用 .md 默认
+            value = tool_overrides.get(param.flag, param.default)
+            if value:
+                cmd_parts.append(f'{param.flag} {value}')
             continue
 
         if dt == "_PRIMER_F":

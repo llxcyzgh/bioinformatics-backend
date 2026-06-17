@@ -23,6 +23,9 @@ class Script(Model):
     md_content = Column(Text, nullable=False, default='')
     inputs = Column(Text, nullable=False, default='')
     outputs = Column(Text, nullable=False, default='')
+    # .md 解析出的真实文件名（仅供展示）；inputs/outputs 仍是建图用的 type-ID 词汇
+    md_inputs = Column(Text, nullable=False, default='')
+    md_outputs = Column(Text, nullable=False, default='')
     runtime = Column(Integer, nullable=False, default=0)
     cost = Column(Float, nullable=False, default=0.0)
     weight = Column(Integer, nullable=False, default=0)
@@ -57,6 +60,8 @@ class Script(Model):
             "md_content": self.md_content,
             "inputs": self.inputs,
             "outputs": self.outputs,
+            "md_inputs": self.md_inputs,
+            "md_outputs": self.md_outputs,
             "runtime": self.runtime,
             "cost": self.cost,
             "weight": self.weight,

@@ -13,6 +13,7 @@ class ParamDef(BaseModel):
     data_type: str  # ToolDef data type 或特殊类型（_PRIMER_F, _MANIFEST, _METADATA, _GROUP_LIST）
     required: bool = True
     default: str | None = None
+    description: str | None = None  # 来自 .md 参数说明列，仅供展示
 
 
 class OutputFileDef(BaseModel):

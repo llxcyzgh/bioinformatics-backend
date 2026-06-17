@@ -30,6 +30,36 @@ from app.services.script_service import ScriptService
 
 logger = logging.getLogger(__name__)
 
+# 用户改的参数值会原样拼进 qsub 脚本，只允许字母/数字/._/-（无空格、无 shell 元字符）
+_PARAM_OVERRIDE_RE = re.compile(r"^[A-Za-z0-9._/\-]+$")
+
+
+def _sanitize_param_overrides(tool_chain) -> dict:
+    """从候选 tool_chain 提取并校验用户改的 param_overrides。
+
+    只保留字符集安全的值；挡掉空、超长(>64)或含 shell 元字符/空格的值（防注入），
+    非法值丢弃并记 warning。返回 {tool_id: {flag: value}}。
+    """
+    out: dict[str, dict[str, str]] = {}
+    if not isinstance(tool_chain, list):
+        return out
+    for t in tool_chain:
+        if not isinstance(t, dict) or not t.get("id"):
+            continue
+        raw = t.get("param_overrides")
+        if not isinstance(raw, dict) or not raw:
+            continue
+        clean: dict[str, str] = {}
+        for flag, val in raw.items():
+            sval = "" if val is None else str(val).strip()
+            if not sval or len(sval) > 64 or not _PARAM_OVERRIDE_RE.match(sval):
+                logger.warning(f"[ChatService] 丢弃非法 param_override {flag}={sval!r}")
+                continue
+            clean[flag] = sval
+        if clean:
+            out[t["id"]] = clean
+    return out
+
 
 class ChatService:
 
@@ -682,11 +712,14 @@ class ChatService:
 
         # ─── 生成编排脚本 ───
         candidate_data_str = fr_message.workflow_candidates or "{}"
+        param_overrides: dict = {}
         try:
             candidate = json.loads(candidate_data_str)
+            tool_chain = candidate.get("tool_chain", []) if isinstance(candidate, dict) else []
             if not tool_ids:
-                tool_chain = candidate.get("tool_chain", [])
                 tool_ids = [t["id"] for t in tool_chain if isinstance(t, dict) and "id" in t]
+            # 提取用户在节点上改的参数（已校验防注入）
+            param_overrides = _sanitize_param_overrides(tool_chain)
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -717,6 +750,7 @@ class ChatService:
                     required_files=required_files_info,
                     extra_params=extra_params,
                     task_id=task.id,
+                    param_overrides=param_overrides,
                 )
                 logger.info(f"[ChatService] 编排脚本生成完成: {len(generated_code)} 字符")
             except Exception as e:

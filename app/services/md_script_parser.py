@@ -173,8 +173,10 @@ def _parse_params(rows: list[list[str]]) -> list[dict]:
         default_raw = row[3] if len(row) > 3 else ""
         default = None if _strip_cell(default_raw) in {"", "-", "—", "无"} else _strip_cell(default_raw)
         example = row[4] if len(row) > 4 else ""
+        description = _strip_cell(row[1]) if len(row) > 1 else ""
         params.append({
             "flag": flag,
+            "description": description,
             "data_type": _infer_data_type(flag, default, example),
             "required": bool(required),
             "default": default,

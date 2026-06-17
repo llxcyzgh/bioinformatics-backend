@@ -74,6 +74,7 @@ class DomainService:
                 data_type=p["data_type"],
                 required=p.get("required", True),
                 default=p.get("default"),
+                description=p.get("description"),
             )
             for p in json.loads(s.call_params or "[]")
         ]

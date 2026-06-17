@@ -253,6 +253,8 @@ def seed():
     seed_data_types()
     backfill_domains()
     backfill_md_content()
+    backfill_md_fields()
+    backfill_call_param_descriptions()
 
 
 def migrate():
@@ -262,6 +264,7 @@ def migrate():
     migrate_tasks_v3()
     migrate_domains_v1()
     migrate_domains_v2()
+    migrate_scripts_md_fields()
     print("Database tables created successfully!")
 
 
@@ -632,6 +635,126 @@ def backfill_domains():
 
         session.commit()
         print(f"Backfilled domains: {len(folders)} folders, {len(scripts)} scripts tagged amplicon; {backfilled} scripts got call params.")
+    finally:
+        session.close()
+
+
+def migrate_scripts_md_fields():
+    """给 scripts 加 md_inputs/md_outputs（.md 解析出的真实文件名，仅供展示）。
+
+    inputs/outputs 仍是建图用的 type-ID 词汇，不动；这两列只是把 .md 里的真实文件名
+    单独存一份供管理端列表展示。
+    """
+    import sqlite3
+    from config.database import DATABASE_URL
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    new_columns = [
+        ("scripts", "md_inputs", "TEXT NOT NULL DEFAULT ''"),
+        ("scripts", "md_outputs", "TEXT NOT NULL DEFAULT ''"),
+    ]
+    for table, col, col_type in new_columns:
+        try:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
+            print(f"  Added column {table}.{col}")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e):
+                pass
+            else:
+                raise
+    conn.commit()
+    conn.close()
+
+
+def backfill_md_fields():
+    """从 md_content 解析 .md 真值，回填 runtime/cost/description/name/md_inputs/md_outputs。
+
+    幂等：仅当 md_inputs 为空时回填（一次性纠正种子阶段用公式/注册表填错的值）。
+    刻意不动 inputs/outputs（type-ID 建图词汇）和 call_params/call_outputs（执行器语义类型）。
+    """
+    from app.services.md_script_parser import parse_md
+    session = SessionLocal()
+    try:
+        scripts = session.query(Script).all()
+        updated = 0
+        for s in scripts:
+            if (s.md_inputs or "").strip():
+                continue  # 已回填
+            md = (s.md_content or "").strip()
+            if not md:
+                continue
+            try:
+                p = parse_md(md)
+            except Exception:
+                continue
+            if p.get("runtime"):
+                s.runtime = p["runtime"]
+            if p.get("cost"):
+                s.cost = p["cost"]
+            if p.get("description"):
+                s.description = p["description"]
+            if p.get("name"):
+                s.name = p["name"]
+            s.md_inputs = json.dumps(p.get("inputs", []), ensure_ascii=False)
+            s.md_outputs = json.dumps(p.get("outputs", []), ensure_ascii=False)
+            updated += 1
+        session.commit()
+        print(f"Backfilled md_fields: {updated} scripts got .md truth (runtime/cost/desc/name/md_inputs/md_outputs).")
+    finally:
+        session.close()
+
+
+def backfill_call_param_descriptions():
+    """从 .md 参数说明表，给现有 call_params 各项补 description（按 flag 匹配）。
+
+    幂等：仅当某 flag 的 description 为空时补。刻意只增量补 description，
+    绝不覆盖 data_type/required/default（这些是执行器语义，由注册表种子填的正确）。
+    """
+    from app.services.md_script_parser import parse_md
+    session = SessionLocal()
+    try:
+        scripts = session.query(Script).all()
+        updated = 0
+        for s in scripts:
+            md = (s.md_content or "").strip()
+            if not md:
+                continue
+            try:
+                params = json.loads(s.call_params or "[]")
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if not isinstance(params, list) or not params:
+                continue
+            # 已全部有 description 则跳过（幂等）
+            if all(isinstance(p, dict) and (p.get("description") or "").strip() for p in params):
+                continue
+            try:
+                parsed = parse_md(md)
+            except Exception:
+                continue
+            md_desc = {
+                p["flag"]: (p.get("description") or "").strip()
+                for p in parsed.get("call_params", [])
+                if isinstance(p, dict) and p.get("flag")
+            }
+            if not md_desc:
+                continue
+            changed = False
+            for p in params:
+                if not isinstance(p, dict) or not p.get("flag"):
+                    continue
+                if (p.get("description") or "").strip():
+                    continue  # 已有，保留
+                desc = md_desc.get(p["flag"], "")
+                if desc:
+                    p["description"] = desc
+                    changed = True
+            if changed:
+                s.call_params = json.dumps(params, ensure_ascii=False)
+                updated += 1
+        session.commit()
+        print(f"Backfilled call_param_descriptions: {updated} scripts got param descriptions.")
     finally:
         session.close()
 
