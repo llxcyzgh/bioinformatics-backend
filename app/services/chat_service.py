@@ -508,9 +508,13 @@ class ChatService:
         name = tool_id[4:]
         if not os.path.isdir(ChatService._AMPLICON_REF_DIR):
             return None
+        # tool_id 用连字符（如 amp-frags-qc），而参考文档文件名用下划线
+        # （如 step2_frags_qc.md）。两种形式都尝试匹配尾缀，否则连字符工具
+        # 会拿不到文档、LLM 只能退化成 cp 占位。
+        name_variants = [name, name.replace("-", "_"), name.replace("_", "-")]
         candidates = [
             f for f in os.listdir(ChatService._AMPLICON_REF_DIR)
-            if f.endswith(f"_{name}.md")
+            if f.endswith(".md") and any(f.endswith(f"_{v}.md") for v in name_variants)
         ]
         if not candidates:
             return None
@@ -616,7 +620,22 @@ class ChatService:
 11. 只输出 bash 脚本内容，不要解释、不要 markdown 代码块。
 12. 文件类型和文件名必须严格与参考文档一致，不能搞错。
 13. 若提供了"用户修改的参数"，必须按其指定的值调用对应 flag，覆盖参考文档中的默认值。
-14. 多样本预处理（cutadapt/flash/frags_qc 等 per-sample 步骤）跨样本相互独立，必须用并行：每样本在后台子shell `( ... ) &` 内按序跑完这些步骤，用 `MAX_JOBS` 上限分批并在 `done` 后 `wait` 同步；汇总步骤（如 dada2，读所有样本的 manifest）必须在 `wait` 之后单次执行。"""
+14. 多样本并行结构（关键，严格遵守）：cutadapt/flash/frags_qc 等 per-sample 步骤必须融合进【唯一一个】按样本并行的区域——每个样本在同一个后台子shell `( ... ) &` 内【顺序】跑完全部 per-sample 步骤，而不是为每个工具各开一个 for 循环。请严格照如下结构编写（步骤数随工具链而定，可多可少，但必须在一个 `( ) &` 内按序排列）：
+   SAMPLES=("a" "b")
+   MAX_JOBS="${BIOFLOW_MAX_PARALLEL:-4}"
+   _JOB_I=0
+   for SAMPLE in "${SAMPLES[@]}"; do
+     (
+       bash ${AMPLICON_ROOT}/scripts/step1_cutadapt.sh ...   # 本样本 cutadapt
+       bash ${AMPLICON_ROOT}/scripts/step1_flash.sh ...      # 本样本 flash（吃 cutadapt 输出）
+       bash ${AMPLICON_ROOT}/scripts/step2_frags_qc.sh ...   # 本样本 frags_qc（吃 flash 输出）
+     ) &
+     _JOB_I=$((_JOB_I+1))
+     if [ $((_JOB_I % MAX_JOBS)) -eq 0 ]; then wait || { echo "[FATAL] per-sample 失败" >&2; exit 1; }; fi
+   done
+   wait || { echo "[FATAL] per-sample 失败" >&2; exit 1; }
+   【禁止的反模式】为 cutadapt、flash、frags_qc 各写一个独立的 `for SAMPLE ... ( ... ) & ... wait` 循环（即"每步各一个并行 stage"）；必须是单一融合区域。dada2 等汇总步骤（读取所有样本 manifest）必须在上述 wait 之后单次串行执行。
+15. 禁止用 cp / mkdir / touch / 占位注释替代任何工具。每个工具都必须真实调用其参考文档给出的 `stepX_*.sh` 脚本；文件名衔接不上时用重命名或 symlink，绝不用 cp 伪造输出。"""
 
             user_message = f"""请根据以下信息生成完整的执行脚本：
 
