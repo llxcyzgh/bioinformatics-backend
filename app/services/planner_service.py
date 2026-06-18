@@ -9,6 +9,7 @@ import logging
 from dataclasses import asdict
 
 from pkg.amplicon.planner import plan, PlanningRequest
+from pkg.amplicon.script_registry import TOOL_SCRIPT_CALLS
 from app.services.domain_service import DomainService
 from app.models.script import Script
 
@@ -67,5 +68,8 @@ class PlannerService:
             t["valid_from"] = s.valid_from or ""
             t["valid_until"] = s.valid_until or ""
             t["params"] = json.loads(s.call_params or "[]")
+            # per_sample 标志（cutadapt/flash/frags_qc=True）：供前端路径图画"按样本并行分支"
+            call_def = TOOL_SCRIPT_CALLS.get(t["id"])
+            t["per_sample"] = bool(call_def.per_sample) if call_def else False
 
         return candidate
