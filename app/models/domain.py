@@ -18,6 +18,7 @@ class Domain(Model):
     description = Column(Text, nullable=False, default='')
     is_active = Column(Integer, nullable=False, default=1)
     keywords = Column(String, nullable=False, default='')
+    examples = Column(Text, nullable=False, default='')  # JSON list[str]：用户会怎么问这个库（T1 生成，T4 few-shot 用）
     script_root = Column(String, nullable=False, default='uploaded')
     sort_order = Column(Integer, nullable=False, default=0)
 
@@ -32,6 +33,7 @@ class Domain(Model):
             "description": self.description,
             "is_active": self.is_active,
             "keywords": self.keywords,
+            "examples": self.examples,
             "script_root": self.script_root,
             "sort_order": self.sort_order,
             "created_at": self.created_at.isoformat() if self.created_at else None,

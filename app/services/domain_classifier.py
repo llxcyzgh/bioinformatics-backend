@@ -30,6 +30,19 @@ logger = logging.getLogger(__name__)
 AMPLICON_CODE = "amplicon"
 
 
+def _parse_examples(raw: str) -> list[str]:
+    """解析 domains.examples（JSON list[str]），容错返回 list。"""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return []
+    if isinstance(data, list):
+        return [str(e).strip() for e in data if str(e).strip()]
+    return []
+
+
 class DomainClassifier:
     """领域分流器。
 
@@ -97,23 +110,27 @@ class DomainClassifier:
 
     @staticmethod
     def _relevance_llm(domains: list[Domain], content: str) -> dict:
-        """LLM 判定输入是否属于某领域，给 domain_code / in_scope / confidence。
+        """LLM 判定输入是否属于某领域，给 domain_code / in_scope / confidence / candidates。
 
         无 key / 超时 / 解析失败 → uncertain（让 chat 侧追问，不硬拒）。
+        candidates：可信候选领域（按可能性排序），供多库低置信时"你是指 A 还是 B"追问（T4）。
         """
         uncertain = {
             "domain_id": None,
             "in_scope": False,
             "confidence": "uncertain",
             "reason": "无法判定（未配置 key / 超时 / 解析失败）",
+            "candidates": [],
         }
         if not DASHSCOPE_API_KEY or not (content or "").strip():
             return uncertain
 
-        lines = [
-            f"- {d.code}：{d.name}（{d.description}；关键词：{d.keywords}）"
-            for d in domains
-        ]
+        # 每个库附 1-2 条 example_queries 作 few-shot（T1 生成）
+        lines = []
+        for d in domains:
+            ex_list = _parse_examples(getattr(d, "examples", "") or "")
+            ex = "；示例问法：" + " / ".join(ex_list[:2]) if ex_list else ""
+            lines.append(f"- {d.code}：{d.name}（{d.description}；关键词：{d.keywords}{ex}）")
         system = (
             "你是生物信息分析平台的领域分流器。判断用户输入是否属于下列任一分析领域，"
             "若是则指出是哪个。\n可选领域：\n"
@@ -122,12 +139,13 @@ class DomainClassifier:
             '{"domain_code": "<领域 code，或 none>", '
             '"in_scope": <true|false>, '
             '"confidence": "high|medium|low", '
+            '"candidates": ["<可信候选领域 code，按可能性排序，1-3 个；domain_code=none 时可为空>"], '
             '"reason": "<简短中文理由>"}\n'
             "判定标准：\n"
             "- 输入明显属于某领域 → 对应 code、in_scope=true、high；\n"
             "- 输入明显与生物信息分析无关（天气、闲聊、订餐、新闻等）→ "
             "domain_code=\"none\"、in_scope=false、high；\n"
-            "- 像是某领域但不够确定 → medium；\n"
+            "- 像是某领域但不够确定 → medium，并把可能的领域都放进 candidates；\n"
             "- 信息太少无法判断 → low（domain_code 可为 none）。"
         )
         try:
@@ -159,6 +177,9 @@ class DomainClassifier:
         if confidence not in {"high", "medium", "low"}:
             confidence = "low"
 
+        # 解析 candidates（list 或逗号串）→ 映射到真实领域对象
+        candidate_objs = DomainClassifier._map_candidates(domains, data.get("candidates"))
+
         is_none = (not code) or code.lower() == "none"
         if is_none:
             logger.info(
@@ -169,6 +190,7 @@ class DomainClassifier:
                 "in_scope": False,
                 "confidence": confidence,
                 "reason": reason or "不属于任何启用领域",
+                "candidates": candidate_objs,
             }
 
         matched = next(
@@ -182,17 +204,62 @@ class DomainClassifier:
                 "in_scope": False,
                 "confidence": confidence,
                 "reason": f"领域 code {code!r} 无法匹配",
+                "candidates": candidate_objs,
             }
+
+        # 确保主选在候选首位（disambiguate 列表要含它）
+        candidate_objs = DomainClassifier._ensure_first(candidate_objs, matched)
 
         # code 非空时 in_scope 默认 true（以 LLM 显式输出为准）
         in_scope = True if in_scope_raw is None else bool(in_scope_raw)
         logger.info(
             f"[DomainClassifier] LLM 判定 domain={matched.code} "
-            f"in_scope={in_scope} confidence={confidence}"
+            f"in_scope={in_scope} confidence={confidence} candidates={[c['code'] for c in candidate_objs]}"
         )
         return {
             "domain_id": matched.id,
             "in_scope": in_scope,
             "confidence": confidence,
             "reason": reason,
+            "candidates": candidate_objs,
         }
+
+    @staticmethod
+    def _map_candidates(domains: list[Domain], raw) -> list[dict]:
+        """把 LLM 返回的候选 code 列表映射成 [{id,code,name,description}]，去重保序。"""
+        if isinstance(raw, str):
+            codes = [c.strip() for c in raw.replace("，", ",").split(",") if c.strip()]
+        elif isinstance(raw, list):
+            codes = [str(c).strip() for c in raw if str(c).strip()]
+        else:
+            codes = []
+        out: list[dict] = []
+        seen: set[int] = set()
+        for c in codes:
+            c = c.strip().strip("`").strip()
+            if not c or c.lower() == "none":
+                continue
+            m = next((d for d in domains if d.code == c or c in d.code or d.code in c), None)
+            if m and m.id not in seen:
+                seen.add(m.id)
+                out.append({
+                    "id": m.id,
+                    "code": m.code,
+                    "name": m.name,
+                    "description": (m.description or "").strip(),
+                })
+        return out
+
+    @staticmethod
+    def _ensure_first(candidates: list[dict], primary: Domain) -> list[dict]:
+        """确保主选领域在候选列表首位（不在则插入到首位）。"""
+        primary_in = any(c["id"] == primary.id for c in candidates)
+        if primary_in:
+            return [c for c in candidates if c["id"] == primary.id] + \
+                   [c for c in candidates if c["id"] != primary.id]
+        return [{
+            "id": primary.id,
+            "code": primary.code,
+            "name": primary.name,
+            "description": (primary.description or "").strip(),
+        }] + candidates

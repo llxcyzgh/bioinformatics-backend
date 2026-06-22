@@ -264,6 +264,7 @@ def migrate():
     migrate_tasks_v3()
     migrate_domains_v1()
     migrate_domains_v2()
+    migrate_domains_v3()
     migrate_scripts_md_fields()
     print("Database tables created successfully!")
 
@@ -539,6 +540,25 @@ def migrate_domains_v2():
     try:
         cursor.execute("ALTER TABLE tasks ADD COLUMN domain_id INTEGER NOT NULL DEFAULT 0")
         print("  Added column tasks.domain_id")
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" in str(e):
+            pass
+        else:
+            raise
+    conn.commit()
+    conn.close()
+
+
+def migrate_domains_v3():
+    """领域分流改造：给 domains 加 examples（JSON list[str]，T1 生成的用户问法示例，T4 few-shot 用）。"""
+    import sqlite3
+    from config.database import DATABASE_URL
+    db_path = DATABASE_URL.replace("sqlite:///", "")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("ALTER TABLE domains ADD COLUMN examples TEXT NOT NULL DEFAULT ''")
+        print("  Added column domains.examples")
     except sqlite3.OperationalError as e:
         if "duplicate column name" in str(e):
             pass

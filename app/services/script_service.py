@@ -489,10 +489,12 @@ class ScriptService:
                 if summ["description"]:
                     domain.description = summ["description"]
                     domain.keywords = summ["keywords"] or domain.keywords
+                    domain.examples = json.dumps(summ.get("example_queries") or [], ensure_ascii=False)
                     domain.save(db)
                     logger.info(
                         f"[upload_library] 自动填充领域描述: {domain.code} "
-                        f"(desc {len(summ['description'])} 字, kw {len(summ['keywords'])} 字)"
+                        f"(desc {len(summ['description'])} 字, kw {len(summ['keywords'])} 字, "
+                        f"examples {len(summ.get('example_queries') or [])} 条)"
                     )
             except Exception as e:
                 logger.warning(f"[upload_library] 自动填充领域描述失败（不影响导入）: {e}")

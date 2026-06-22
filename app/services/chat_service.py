@@ -295,8 +295,23 @@ class ChatService:
         return {"type": "clarification", "content": content, "data": ""}
 
     @staticmethod
+    def _disambiguate_response(candidates: list[dict]) -> dict:
+        """多库低置信：列出候选领域请用户确认。不钉领域（T4）。"""
+        lines = []
+        for i, c in enumerate(candidates):
+            desc = (c.get("description") or "").strip()
+            head = c.get("name") or c.get("code")
+            lines.append(f"{i + 1}. **{head}**" + (f"：{desc}" if desc else ""))
+        content = (
+            "你的需求可能涉及以下几个方向，能帮我确认一下吗？\n\n"
+            + "\n".join(lines)
+            + "\n\n请告诉我更具体的数据和分析目标，我好为你选对方向。"
+        )
+        return {"type": "clarification", "content": content, "data": ""}
+
+    @staticmethod
     def _uncertain_response(verdict: dict | None) -> dict:
-        """不确定是否相关：追问引导。不钉领域、不硬拒（衔接 T4 多库追问 / T5 重判）。"""
+        """不确定是否相关：追问引导。不钉领域、不硬拒（衔接 T5 重判）。"""
         content = (
             "我想先确认一下你的需求，好选对分析方向。\n"
             "请简单说明：\n"
@@ -368,7 +383,7 @@ class ChatService:
         )
         history_dicts = ChatService._build_history_dicts(history)
 
-        # 期三：领域分流 + 相关性闸（有效性判定）。
+        # 期三+T4：领域分流 + 相关性闸 + 多库消歧。
         # 已钉领域（多轮）沿用；首次需先判"是不是生信任务"，再决定是否钉领域。
         if task.domain_id:
             domain_id = task.domain_id
@@ -377,7 +392,12 @@ class ChatService:
         else:
             verdict = DomainClassifier.classify_with_relevance(db, combined_content)
             logger.info(f"[ChatService] 领域判定: {verdict}")
-            if verdict["in_scope"]:
+            candidates = verdict.get("candidates") or []
+            # 钉领域条件：in_scope 且（高置信，或只有一个可信候选）。
+            # 多库低置信（≥2 候选）时不钉，先让用户消歧（T4）。
+            if verdict["in_scope"] and not (
+                verdict["confidence"] in ("medium", "low") and len(candidates) >= 2
+            ):
                 domain_id = verdict["domain_id"]
                 task.domain_id = domain_id
                 task.save(db)
@@ -401,11 +421,14 @@ class ChatService:
             except Exception as e:
                 logger.error(f"[ChatService] 解析/规划异常，回退到通用 AI: {e}")
                 ai_response = AIService.generate_response(task.id, user_message, history)
+        elif verdict and verdict.get("in_scope") and len(verdict.get("candidates") or []) >= 2:
+            # 多库低置信：列出候选领域请用户确认，不钉领域（T4）
+            ai_response = ChatService._disambiguate_response(verdict["candidates"])
         elif verdict and verdict["confidence"] == "high":
             # 明确与生信分析无关：友好拒绝，不钉领域（task.domain_id 保持 NULL）
             ai_response = ChatService._out_of_scope_response(verdict)
         else:
-            # 不确定（medium/low/uncertain 或无启用领域）：追问引导，不钉领域、不硬拒（衔接 T4/T5）
+            # 不确定（medium/low/uncertain 或无启用领域）：追问引导，不钉领域、不硬拒（衔接 T5）
             ai_response = ChatService._uncertain_response(verdict)
 
         # 标注 previously_used：对比用户历史选择过的路径
