@@ -345,6 +345,7 @@ class ScriptService:
         """
         import re
         from app.models import Domain, ScriptFolder
+        from app.services.library_summary import summarize_library
         from app.services.md_script_parser import parse_md
 
         domain = Domain.find(db, domain_id) if domain_id else None
@@ -405,6 +406,7 @@ class ScriptService:
 
         # 3) 逐对处理
         created = []
+        metas: list[dict] = []  # 每个成功建库脚本的画像原料，供 summarize_library 生成领域描述
         seen_tool_ids = set()
         for pkey, bucket in pairs.items():
             shs, mds, cat = bucket["sh"], bucket["md"], bucket["cat"]
@@ -472,6 +474,28 @@ class ScriptService:
                 is_active=0,
             ).save(db)
             created.append(script)
+            metas.append({
+                "name": meta.get("name") or base,
+                "description": (meta.get("description") or "").strip(),
+                "category": cat,
+                "tool_id": tool_id,
+            })
+
+        # 自动填充领域描述（仅当 description 为空，不覆盖手工值），
+        # 让领域分流器有"这个库是干什么的"可读——单库时也能据此做相关性判定（见 T3）。
+        if domain and metas and not (domain.description or "").strip():
+            try:
+                summ = summarize_library(metas, domain.name)
+                if summ["description"]:
+                    domain.description = summ["description"]
+                    domain.keywords = summ["keywords"] or domain.keywords
+                    domain.save(db)
+                    logger.info(
+                        f"[upload_library] 自动填充领域描述: {domain.code} "
+                        f"(desc {len(summ['description'])} 字, kw {len(summ['keywords'])} 字)"
+                    )
+            except Exception as e:
+                logger.warning(f"[upload_library] 自动填充领域描述失败（不影响导入）: {e}")
 
         if domain_id:
             DomainService.invalidate(domain_id)
