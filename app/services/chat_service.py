@@ -322,6 +322,12 @@ class ChatService:
         return {"type": "clarification", "content": content, "data": ""}
 
     @staticmethod
+    def _path_confirmed(db: Session, task_id: int) -> bool:
+        """是否已确认过分析路径（存在 confirm_path 产生的 select_path 消息）。
+        确认后领域锁定，不再重判（T5）。"""
+        return Message.where(db, task_id=task_id, type="select_path").first() is not None
+
+    @staticmethod
     def chat(
         db: Session,
         task_id: Optional[int],
@@ -383,13 +389,34 @@ class ChatService:
         )
         history_dicts = ChatService._build_history_dicts(history)
 
-        # 期三+T4：领域分流 + 相关性闸 + 多库消歧。
-        # 已钉领域（多轮）沿用；首次需先判"是不是生信任务"，再决定是否钉领域。
-        if task.domain_id:
-            domain_id = task.domain_id
-            domain = DomainService.get(db, domain_id)
-            verdict = None
+        # 期三+T4+T5：领域分流 + 相关性闸 + 多库消歧 + 早期重判。
+        verdict = None
+        candidates: list[dict] = []
+        path_confirmed = bool(task.domain_id) and ChatService._path_confirmed(db, task.id)
+
+        if task.domain_id and path_confirmed:
+            # 路径已确认：领域锁定，不再重判
+            domain = DomainService.get(db, task.domain_id)
+        elif task.domain_id:
+            # 已钉但路径未确认：允许早期重判（用户可能改口到别的领域）
+            verdict = DomainClassifier.classify_with_relevance(db, combined_content)
+            logger.info(f"[ChatService] 早期重判: {verdict}")
+            candidates = verdict.get("candidates") or []
+            if (verdict["in_scope"] and verdict["domain_id"]
+                    and verdict["domain_id"] != task.domain_id
+                    and verdict["confidence"] in ("high", "medium")):
+                logger.info(f"[ChatService] 领域切换: {task.domain_id} -> {verdict['domain_id']}")
+                task.domain_id = verdict["domain_id"]
+                task.save(db)
+                domain = DomainService.get(db, task.domain_id)
+                history_dicts = []  # 换领域后从零解析，避免旧领域上下文污染
+            else:
+                # 维持原领域（同领域 / 更弱信号）
+                domain = DomainService.get(db, task.domain_id)
+                verdict = None
+                candidates = []
         else:
+            # 首次：跑相关性闸
             verdict = DomainClassifier.classify_with_relevance(db, combined_content)
             logger.info(f"[ChatService] 领域判定: {verdict}")
             candidates = verdict.get("candidates") or []
@@ -398,13 +425,13 @@ class ChatService:
             if verdict["in_scope"] and not (
                 verdict["confidence"] in ("medium", "low") and len(candidates) >= 2
             ):
-                domain_id = verdict["domain_id"]
-                task.domain_id = domain_id
+                task.domain_id = verdict["domain_id"]
                 task.save(db)
-                domain = DomainService.get(db, domain_id)
+                domain = DomainService.get(db, task.domain_id)
             else:
-                domain_id = None
                 domain = None
+
+        domain_id = task.domain_id  # 领域已定时即当前 task.domain_id（已钉/刚钉/刚切换）
 
         # 解析 + 路由：仅在通过相关性闸（领域已定）时进行
         if domain is not None:
