@@ -284,6 +284,29 @@ class ChatService:
         }
 
     @staticmethod
+    def _out_of_scope_response(verdict: dict) -> dict:
+        """明确与生信分析无关：友好说明 + 列出能做什么。不钉领域。"""
+        content = (
+            "这看起来不是一个生物信息学分析任务，我暂时没法帮你处理。\n"
+            "我可以做这类分析：\n"
+            "- 扩增子（16S / ITS）测序：ASV 推断、物种注释、Alpha/Beta 多样性、差异分析等\n\n"
+            "如果你的需求属于上面这些，请描述你的数据（如双端 FASTQ）和分析目标，我来帮你规划流程。"
+        )
+        return {"type": "clarification", "content": content, "data": ""}
+
+    @staticmethod
+    def _uncertain_response(verdict: dict | None) -> dict:
+        """不确定是否相关：追问引导。不钉领域、不硬拒（衔接 T4 多库追问 / T5 重判）。"""
+        content = (
+            "我想先确认一下你的需求，好选对分析方向。\n"
+            "请简单说明：\n"
+            "- 你有什么数据？（如双端测序 FASTQ、ASV 表、FASTA 序列）\n"
+            "- 你想得到什么结果？（如物种组成、多样性、组间差异）\n\n"
+            "例如「我有双端 16S 测序数据，想做物种注释和多样性分析」。"
+        )
+        return {"type": "clarification", "content": content, "data": ""}
+
+    @staticmethod
     def chat(
         db: Session,
         task_id: Optional[int],
@@ -345,31 +368,45 @@ class ChatService:
         )
         history_dicts = ChatService._build_history_dicts(history)
 
-        # 期三：按描述分流到领域；首次确定后固定在任务上（多轮不重判）
+        # 期三：领域分流 + 相关性闸（有效性判定）。
+        # 已钉领域（多轮）沿用；首次需先判"是不是生信任务"，再决定是否钉领域。
         if task.domain_id:
             domain_id = task.domain_id
+            domain = DomainService.get(db, domain_id)
+            verdict = None
         else:
-            domain_id = DomainClassifier.classify(db, combined_content)
-            if domain_id is None:
-                domain_id = DomainService.get_amplicon_domain(db).id
-            task.domain_id = domain_id
-            task.save(db)
-        domain = DomainService.get(db, domain_id)
-
-        # Parse user input (use combined content with image descriptions)
-        try:
-            if domain.code == DomainService.AMPLICON_CODE:
-                parser_result = ParserService.parse(combined_content, history_dicts)
+            verdict = DomainClassifier.classify_with_relevance(db, combined_content)
+            logger.info(f"[ChatService] 领域判定: {verdict}")
+            if verdict["in_scope"]:
+                domain_id = verdict["domain_id"]
+                task.domain_id = domain_id
+                task.save(db)
+                domain = DomainService.get(db, domain_id)
             else:
-                domain_types = DomainService.get_type_vocab(db, domain_id)
-                parser_result = ParserService.parse(combined_content, history_dicts, domain_types=domain_types)
-            logger.info(f"[ChatService] 解析结果: {parser_result}")
+                domain_id = None
+                domain = None
 
-            # Decision routing
-            ai_response = ChatService._route_decision(db, domain_id, parser_result, combined_content, history_dicts)
-        except Exception as e:
-            logger.error(f"[ChatService] 解析/规划异常，回退到通用 AI: {e}")
-            ai_response = AIService.generate_response(task.id, user_message, history)
+        # 解析 + 路由：仅在通过相关性闸（领域已定）时进行
+        if domain is not None:
+            try:
+                if domain.code == DomainService.AMPLICON_CODE:
+                    parser_result = ParserService.parse(combined_content, history_dicts)
+                else:
+                    domain_types = DomainService.get_type_vocab(db, domain_id)
+                    parser_result = ParserService.parse(combined_content, history_dicts, domain_types=domain_types)
+                logger.info(f"[ChatService] 解析结果: {parser_result}")
+
+                # Decision routing
+                ai_response = ChatService._route_decision(db, domain_id, parser_result, combined_content, history_dicts)
+            except Exception as e:
+                logger.error(f"[ChatService] 解析/规划异常，回退到通用 AI: {e}")
+                ai_response = AIService.generate_response(task.id, user_message, history)
+        elif verdict and verdict["confidence"] == "high":
+            # 明确与生信分析无关：友好拒绝，不钉领域（task.domain_id 保持 NULL）
+            ai_response = ChatService._out_of_scope_response(verdict)
+        else:
+            # 不确定（medium/low/uncertain 或无启用领域）：追问引导，不钉领域、不硬拒（衔接 T4/T5）
+            ai_response = ChatService._uncertain_response(verdict)
 
         # 标注 previously_used：对比用户历史选择过的路径
         if ai_response.get("workflow_candidates"):
