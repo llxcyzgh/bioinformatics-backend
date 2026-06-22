@@ -199,10 +199,11 @@ class ChatService:
         return used_keys
 
     @staticmethod
-    def _route_decision(db: Session, domain_id: int, parser_result: dict, content: str, history_dicts: list[dict]) -> dict:
-        """根据解析结果决定回复类型"""
+    def _route_decision(db: Session, domain_id: int, parser_result: dict, content: str, history_dicts: list[dict], confidence: str = "medium") -> dict:
+        """根据解析结果决定回复类型。confidence 来自解析器：low 时即便有输入/目标也先追问（T6）。"""
         available = parser_result.get("available_inputs", [])
         goals = parser_result.get("goal_types", [])
+        confidence = (confidence or "medium").lower()
 
         # CASE A: 都不知道 → 澄清
         if not available and not goals:
@@ -251,6 +252,22 @@ class ChatService:
             }
 
         # CASE D: 都知道 → 运行规划器
+        # 低置信：解析不确定，先追问确认，不直接规划（T6）；medium 放行。
+        if confidence == "low":
+            goal_names = ChatService._format_data_type_names(goals)
+            return {
+                "type": "clarification",
+                "content": (
+                    f"我大致理解你想做{goal_names}，但不太确定具体的数据和目标，"
+                    "先跟你确认一下以免规划偏了。\n"
+                    "能再说细一点吗？例如：数据是双端 FASTQ 还是 ASV 表？"
+                    "想要物种组成、多样性，还是组间差异分析？"
+                ),
+                "data": "",
+                "available_inputs": json.dumps(available, ensure_ascii=False),
+                "goal_types": json.dumps(goals, ensure_ascii=False),
+            }
+
         candidates = PlannerService.plan_workflow(db, domain_id, available, goals)
 
         if not candidates:
@@ -444,7 +461,7 @@ class ChatService:
                 logger.info(f"[ChatService] 解析结果: {parser_result}")
 
                 # Decision routing
-                ai_response = ChatService._route_decision(db, domain_id, parser_result, combined_content, history_dicts)
+                ai_response = ChatService._route_decision(db, domain_id, parser_result, combined_content, history_dicts, confidence=parser_result.get("confidence", "medium"))
             except Exception as e:
                 logger.error(f"[ChatService] 解析/规划异常，回退到通用 AI: {e}")
                 ai_response = AIService.generate_response(task.id, user_message, history)
