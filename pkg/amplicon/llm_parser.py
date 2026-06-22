@@ -39,12 +39,7 @@ SYSTEM_PROMPT = """\
 1. 用户拥有什么数据（available_inputs）
 2. 用户想要什么分析结果（goal_types）
 
-## ⚠️ 重要：输入有效性判断
-
-首先判断用户输入是否与生物信息分析相关：
-- 如果输入与生物信息分析完全无关（如问候语、无意义字符、"这是什么"、"start"等），必须返回空的 goal_types
-- 如果输入太短且无明确分析意图（少于5个字符且无生物学术语），返回空的 goal_types
-- 如果输入含义模糊但可能与分析相关，谨慎选择 goal_types，并设置 confidence 为 "low"
+（输入已由上游领域分流确认属于本领域分析，你只需专注提取数据与分析目标，无需再判断"是否为生信任务"。）
 
 ## 可用数据类型
 
@@ -131,7 +126,7 @@ SYSTEM_PROMPT = """\
 3. **confidence**：评估把握程度
    - "high"：用户描述清晰，明确说明了数据类型和分析目标
    - "medium"：用户有一定意图，但部分信息需要推测
-   - "low"：用户输入模糊，与生物信息分析关联性弱，或包含过多无关内容
+   - "low"：数据或分析目标提取不清晰，需要用户进一步说明
 
 4. **scenario_description**：用一句话总结，格式如"从{输入数据}出发，目标：{分析目标}"
 
@@ -145,7 +140,7 @@ SYSTEM_PROMPT = """\
   "confidence": "high" | "medium" | "low"
 }
 
-记住：当输入与生物信息分析无关时，goal_types 必须为空数组 []，不要试图猜测用户的意图。
+记住：只有用户明确表达的数据/目标才填入对应字段，不要猜测；提取不到的字段留空数组 []。
 """
 
 CLARIFICATION_SYSTEM_PROMPT = """\
@@ -248,6 +243,7 @@ def build_system_prompt(domain_types: list[dict]) -> str:
 1. 用户拥有什么数据（available_inputs）
 2. 用户想要什么分析结果（goal_types）
 
+（输入已由上游领域分流确认属于本领域分析，专注提取数据与分析目标即可。）
 必须严格从下列数据类型 ID 中选择，不能创造新的 ID。
 
 ### 输入数据类型（用户可能已拥有的数据）：
@@ -259,9 +255,8 @@ def build_system_prompt(domain_types: list[dict]) -> str:
 ## 识别规则
 1. available_inputs：仅当用户明确说明或暗示拥有某数据时才选择；未说明则返回 []，不要猜测。
 2. goal_types：选择所有匹配用户需求的目标 ID；无法确定则返回 []。
-3. 如果输入与本领域分析无关（问候、无意义字符），goal_types 必须为 []。
-4. confidence：high（描述清晰）/ medium（部分需推测）/ low（模糊或关联性弱）。
-5. scenario_description：一句话总结，如"从{{输入数据}}出发，目标：{{分析目标}}"。
+3. confidence：high（描述清晰）/ medium（部分需推测）/ low（数据或目标提取不清晰）。
+4. scenario_description：一句话总结，如"从{{输入数据}}出发，目标：{{分析目标}}"。
 
 严格输出 JSON，不要输出其它内容：
 {{"available_inputs": ["ID", ...], "goal_types": ["ID", ...], "scenario_description": "...", "confidence": "medium"}}
