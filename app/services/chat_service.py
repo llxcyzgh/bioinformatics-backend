@@ -945,6 +945,8 @@ class ChatService:
 
         generated_code_algo = ""
         generated_code_llm = ""
+        algo_error = ""   # 非空 = 算法路径失败（脚本保持空，绝不把错误文字当脚本）
+        llm_error = ""    # 非空 = LLM 路径失败
         if tool_ids:
             # ─── 1. 算法生成编排脚本 ───
             try:
@@ -965,11 +967,11 @@ class ChatService:
                 logger.info(f"[ChatService] 算法编排脚本生成完成: {len(generated_code_algo)} 字符")
             except Exception as e:
                 logger.error(f"[ChatService] 算法编排脚本生成失败: {e}")
-                generated_code_algo = f"# 编排脚本生成失败: {e}\n# tool_ids: {tool_ids}\n"
+                algo_error = f"{type(e).__name__}: {e}"
 
             # ─── 2. LLM 生成编排脚本 ───
             try:
-                generated_code_llm = ChatService._generate_orchestrator_with_llm(
+                llm_out = ChatService._generate_orchestrator_with_llm(
                     tool_ids=tool_ids,
                     tool_chain=tool_chain,
                     file_mappings=enriched_mappings,
@@ -978,15 +980,24 @@ class ChatService:
                     task_id=task.id,
                     param_overrides=param_overrides,
                 )
-                if not generated_code_llm:
-                    generated_code_llm = f"# LLM 编排脚本生成失败或未返回内容\n# tool_ids: {tool_ids}\n"
+                if llm_out:
+                    generated_code_llm = llm_out
+                else:
+                    llm_error = "未返回内容（可能未配置 API Key、网络超时、限流或模型返回为空）"
             except Exception as e:
                 logger.error(f"[ChatService] LLM 编排脚本生成调用失败: {e}")
-                generated_code_llm = f"# LLM 编排脚本生成失败: {e}\n# tool_ids: {tool_ids}\n"
+                llm_error = f"{type(e).__name__}: {e}"
 
+        # 失败时不把错误塞进脚本字符串（避免被当真脚本执行 → 注释脚本秒成功），
+        # 而是单独记录 status/errors，供 start_execution 拦截、供消息文案如实展示。
         result_payload = json.dumps({
             "script1": generated_code_algo,
             "script2": generated_code_llm,
+            "status": {
+                "script1": "failed" if algo_error else ("ok" if generated_code_algo else "empty"),
+                "script2": "failed" if llm_error else ("ok" if generated_code_llm else "empty"),
+            },
+            "errors": {"script1": algo_error, "script2": llm_error},
         }, ensure_ascii=False)
 
         # 创建用户消息
@@ -1000,14 +1011,25 @@ class ChatService:
         )
         user_message.save(db)
 
-        # 创建助手消息（校验通过 + 生成的两份编排脚本）
+        # 创建助手消息（校验通过 + 两份编排脚本的真实生成状态：失败时如实告警）
+        def _code_status_line(label: str, code: str, error: str) -> str:
+            if error:
+                return f"• {label}: ❌ 生成失败 — {error}"
+            if code:
+                return f"• {label}: ✅ 已生成"
+            return f"• {label}: ⚠ 未生成"
+
+        algo_ok = bool(generated_code_algo) and not algo_error
+        llm_ok = bool(generated_code_llm) and not llm_error
+        any_ok = algo_ok or llm_ok
         assistant_content = (
             "✅ 文件校验完成！\n\n"
             "• 文件格式: 正确\n"
             "• 文件完整性: 通过\n"
-            "• 执行代码1（算法编排）: 已生成\n"
-            "• 执行代码2（LLM 编排）: 已生成\n\n"
-            "所有文件已就绪，可以开始执行分析任务。"
+            + _code_status_line("执行代码1（算法编排）", generated_code_algo, algo_error) + "\n"
+            + _code_status_line("执行代码2（LLM 编排）", generated_code_llm, llm_error) + "\n\n"
+            + ("已就绪的代码可以开始执行分析任务。" if any_ok
+               else "❌ 两份代码均未生成，暂时无法执行分析任务，请检查后端日志或重试。")
         )
         assistant_message = Message(
             task_id=task.id,
@@ -1101,6 +1123,7 @@ export PATH=/opt/conda/bin:$PATH
 
         # 优先使用生成的真实代码；支持双脚本 JSON 结构 {script1, script2}
         generated_code = ""
+        gen_failed_reason = ""   # 非空 = 该脚本是已知生成失败，应拒绝执行而非静默模拟
         source_message = None
         if validated_message and validated_message.result_content:
             source_message = validated_message
@@ -1117,10 +1140,24 @@ export PATH=/opt/conda/bin:$PATH
                     # 兜底：如果指定 key 不存在，使用整个原始内容（兼容旧数据）
                     if not generated_code:
                         generated_code = raw_content
+                    # 失败拦截：confirm_upload 记录过该脚本生成失败 → 拒绝执行
+                    status_map = parsed.get("status")
+                    if isinstance(status_map, dict) and status_map.get(key) == "failed":
+                        errors_map = parsed.get("errors")
+                        gen_failed_reason = errors_map.get(key, "") if isinstance(errors_map, dict) else ""
+                        if not gen_failed_reason:
+                            gen_failed_reason = "生成失败（原因未记录）"
                 else:
                     generated_code = raw_content
             except (json.JSONDecodeError, TypeError):
                 generated_code = raw_content
+
+        if gen_failed_reason:
+            # 不静默跑注释脚本/模拟，直接报错让前端 toast 提示
+            raise ValueError(
+                f"执行代码{script_index} 生成失败，已拒绝执行：{gen_failed_reason}。"
+                f"请回到对话查看失败提示并重试。"
+            )
 
         if generated_code:
             script = sge_header + "\n"
