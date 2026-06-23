@@ -24,6 +24,7 @@
 - **生成产物 = 单步工具级脚本**（同 cutadapt/dada2 级别），**不是**一个把整条任务包圆的大脚本。
 - 新脚本的**输入/输出必须能与既有脚本串成有效流水线**。
 - 新脚本要**自动录入脚本库**（即写入 `Script` 表 + 落盘 .sh + 进入工具图）。
+- **生成是通用常识驱动的，不预先设计具体工具**：系统不把"单端"或任何缺口映射到某个固定脚本。它用**通用生信常识提示词**理解意图、识别缺口；缺口确无现成工具时，由 LLM **当场决定**生成什么样的单步脚本来补。单端只是触发此通用机制的例子之一。计划里出现的 `amp-dada2-se` 一律按"LLM 可能产出的示例"理解，**不作预设规格**。
 
 ---
 
@@ -72,21 +73,24 @@
 
 ## 3. 架构设计
 
-### 3.1 为什么选 `amp-dada2-se` 作为单端补齐工具（关键决策）
+### 3.1 通用常识驱动的缺口补齐（**不**预先设计具体工具）
 
-单端扩增子的缺口**只在 per-sample 前处理**（cutadapt/flash/frags-qc 都是双端专用）。但 QIIME2 的 `dada2 denoise-single` 可以**一步**完成「引物切除 + 去噪 + 生成 ASV」，直接吃单端 fastq 的 manifest。因此：
+本计划的核心原则：**系统不预先把"单端"或任何缺口映射到某个固定脚本**。补齐工具是 LLM 在运行时、基于**通用生物信息常识**现场决定的。单端只是触发此通用机制的例子之一；将来任何"合理但平台缺工具"的任务都走同一条路。
 
-- **一个工具** `amp-dada2-se`：`FASTQ_SINGLE → FEATURE_SEQS, FEATURE_TABLE, FEATURE_FASTA`
-- **非 per-sample**（像 `amp-dada2` 一样吃 manifest，一次性处理所有样本）→ **绕开** `_gen_parallel_region` 的 `ValueError` 地雷。
-- 输出**故意复用** `amp-dada2` 的输出类型 → 下游脚本**零改动**即可衔接。
+处理分四层（上两层用通用常识、下两层落到平台类型系统）：
 
-科学性前提：单端扩增子适用于**短读区**（如单独 V4 ≈250bp、ITS 子区），读长能覆盖整个扩增子。用户主动说"单端"即默认此场景成立。
+1. **意图理解（通用常识）**：用通用生信常识提示词，把用户描述理解成一个可处理的生信任务（如"单端原始数据 → 想看样本 PCoA 聚类"），**不**依赖某域工具词表去猜数据类型。
+2. **缺口识别**：在当前域工具图上找路径；找不到 → 用通用常识判断是"合理任务、只是缺工具"还是"无意义"。
+3. **现场生成（落地到平台类型系统）**：LLM 决定**生成什么样的单步工具**来补这个缺口；提示词同时给出**数据类型词表 + 串链约束 + 执行模型约束**，让产物既能串进既有流水线、又能被编排器执行。
+4. **串链 + 执行**：注册 → 重规划 → 上传 → 执行。
 
-> 备选（**不采用**）：生成 `amp-cutadapt-se`+`amp-frags-qc-se`+`amp-dada2-se` 三件 per-sample 工具。前两个会撞 `_gen_parallel_region` 硬编码，必须先做完整 per-sample 泛化（cuddly-inventing-frog），工作量翻倍且首版用不上。留作后续。
+> **执行模型约束（重要）**：现有编排器 `_gen_parallel_region`（`orchestrator.py:331-338`）对 cutadapt/flash/frags-qc 之外的 per-sample 工具会 `raise ValueError`。因此生成提示词要**引导 LLM 优先生成"非 per-sample / 吃 manifest / 一次性处理全部样本"形态的工具**（这种走通用 `_build_single_command` 分支，任意 tool_id 都能编排）。这是**约束 LLM 的形态偏好**，不是**替它选好工具**。
+
+> **举例（非预设）**：对"单端原始数据 → PCoA"这个缺口，LLM 凭常识很可能决定生成一个「单端 DADA2 去噪」单步工具——把单端 raw fastq 经 manifest 一步变成下游能用的特征表/代表序列。但**这是 LLM 的判断，不是计划预设的产物**；换个缺口它会生成别的东西。下文 §3.2/§3.3 出现的 `amp-dada2-se` 字样均按此例理解，**仅作说明**。
 
 ### 3.2 生成产物契约 = 一个 `ScriptCallDef` + 一个 `.sh`
 
-LLM 生成的不是"一段大脚本"，而是与 cutadapt/dada2 **同构的单步工具**，产出两样东西：
+LLM 生成的不是"一段大脚本"，而是与 cutadapt/dada2 **同构的单步工具**。**`tool_id / inputs / outputs / params` 的具体取值由 LLM 在运行时按常识决定**——平台只规定结构契约与串链/执行约束（§3.1）。产出两样东西（以下以单端缺口为例，字段值仅作说明）：
 
 **(a) `.sh` 脚本**（落盘到 `scripts/generated/amp-dada2-se.sh`，风格对齐既有 `step3_dada2.sh`）：
 - `#!/bin/bash`，`set -euo pipefail`
@@ -118,8 +122,9 @@ LLM 生成的不是"一段大脚本"，而是与 cutadapt/dada2 **同构的单�
 ### 3.3 串链不变式（必须满足，否则注册前拒收）
 
 > 新工具的**每个输出类型**，要么命中至少一个既有下游工具的**输入**，要么是用户目标类型。
+> 这是对 **LLM 现场产物**的运行时校验（不预设具体工具）；不通过则拒收/要求重生成。
 
-`amp-dada2-se` 自检：
+以下以单端缺口可能产出的「单端 DADA2 去噪」工具为例自检：
 
 | 输出类型 | 被谁消费（既有工具） | 是否到达 PCoA |
 |---|---|---|
@@ -218,11 +223,16 @@ class ToolGenesisService:
     @staticmethod
     def generate_and_register(db, domain_id, gap_spec, user_id) -> dict:
         # 1) 查重：tool_id 已存在且 active → 直接复用，不重复生成
-        # 2) LLM 生成（参考既有 step3_dada2.sh 作风格 few-shot）：
-        #    system: "你是生信脚本工程师。生成一个【单步】bash 工具脚本 + 其 I/O 契约 JSON。
-        #             风格对齐示例。只做一步，不要拼整条流水线。"
-        #    user: gap_spec（缺失链 FASTQ_SINGLE→FEATURE_TABLE、领域、目标 PCoA）
-        #          + 既有同族脚本片段（dada2.sh）作风格参考
+        # 2) LLM 现场生成（通用生信常识 + 平台约束；不预设生成什么工具）：
+        #    system: "你是生信脚本工程师。基于通用生物信息常识，判断这个缺口需要什么样的
+        #             【单步】工具，再生成它的 bash 脚本 + I/O 契约 JSON。只做一步，
+        #             不要拼整条流水线。"
+        #    约束（写进 prompt）：① 输入/输出必须用平台词表里的类型 ID（附词表）；
+        #             ② 每个 output 必须能被既有工具消费或是用户目标（串链不变式 §3.3）；
+        #             ③ 优先生成【非 per-sample / 吃 manifest】形态，以适配现有编排器
+        #               （per-sample 工具当前无法被编排，见 §3.1 执行模型约束）。
+        #    user: 缺口描述（用户意图 + 缺的环节，Phase 2 给出）+ 平台类型词表
+        #          + 既有同族脚本片段作风格 few-shot（可选）
         #    response_format: json_object，含 {sh_content, contract}
         # 3) 契约校验（不过则报错、不注册）：
         #    - tool_id 合法且唯一
@@ -235,7 +245,7 @@ class ToolGenesisService:
         # 7) 返回 {tool_id, script_id, tool_chain_preview}
 ```
 
-**`_route_decision` 加提议分支**（接 Phase 2 的 `capability_gap`）：
+**`_route_decision` 加提议分支**（接 Phase 2 的 `capability_gap`）。严格遵循「**先自动判定 → 提示用户 → 得到回复后才生成**」：
 - 首次缺口 → `type="offer_codegen"`：文案「这块我本来干不了，但我可以现生成一个 `<missing_link>` 的单步脚本，生成后就能接上既有流程。要吗？」+ 按钮
 - 用户同意（新一轮 chat，带同意信号）→ 调 `ToolGenesisService.generate_and_register` → 拿到新 tool_id → **立刻 Phase 4 重规划** → 回 `type="workflow"` 展示含新工具的路径
 
@@ -264,17 +274,17 @@ class ToolGenesisService:
 - 前端路径图：新节点 `amp-dada2-se` 走通用渲染（与 stats 域克隆脚本同路径），无需前端改。
 
 **验证**：
-- 规划出路径，tool_chain 头部是 `amp-dada2-se`，尾部是 `amp-pcoa`。
+- 规划出路径，tool_chain 头部是新生成的工具（如 `amp-dada2-se`），尾部是 `amp-pcoa`。
 - `resolve_required_files` 含 `{typeId:"FASTQ_SINGLE", multiple:true, extensions:[.fastq,.fastq.gz]}`。
 - 路径图 API `/api/.../graph` 含新节点 + 它到 `amp-taxonomy`/`amp-feature-tables` 的边（类型 `FEATURE_SEQS`/`FEATURE_TABLE`）。
 
 ---
 
-### Phase 5：单端执行支持（让 amp-dada2-se 真能跑）
+### Phase 5：执行支持（让 LLM 生成的 manifest 形态单步工具真能跑）
 
-**目标**：上传单端 fastq → 生成编排脚本（manifest 正确）→ 执行。这是把 demo 从"规划出路径"推进到"真出结果"的收尾。
+**目标**：上传原始数据 → 生成编排脚本（manifest 正确）→ 执行。这是把 demo 从"规划出路径"推进到"真出结果"的收尾。Phase 5 **不写任何工具脚本**（那是 Phase 3 的 LLM 干的），只让编排器能调度 LLM 生成的（按 §3.1 引导、吃 manifest 形态的）单步工具。
 
-**改动**（编排器三处小改，**不做**完整 per-sample 泛化）：
+**改动**（编排器两处小改，**不做**完整 per-sample 泛化）：
 1. **FASTQ_SINGLE 上传解析**（`orchestrator.py:87` `_resolve_fastq_pair_uploads` 旁加 `_resolve_fastq_single_uploads`）：
    - 把所有单端 fastq 上传文件 → `samples: {sample_name: {"SE": stored}}`
    - `generate_orchestrator_script` 里 `if FASTQ_SINGLE in required_files` 分支：建 `samples` + 不拆 R1/R2
@@ -283,7 +293,8 @@ class ToolGenesisService:
    - 改：`if any(p.data_type == "_MANIFEST" for p in call_def.params)` → `_gen_manifest_step(...)`
    - `_gen_manifest_step` 按 `samples`（单端用 `{"SE": path}`，双端用 `{sample}.fastq`）写 manifest 行；其余同现状
    - （这正是 `cuddly-inventing-frog.md` 的 step 4，单点复用，不引入整个暂停计划）
-3. **`amp-dada2-se.sh` 内容**：`denoise-single`（Phase 3 生成时即按此约束）。
+
+> 注：若 LLM 偏偏生成了 per-sample 形态工具（违反 §3.1 引导），编排器仍会 `ValueError`——此时如实报错并提示需 per-sample 泛化（cuddly-inventing-frog），不静默。
 
 **验证**：
 - 上传 2 个单端 fastq → `confirm_upload` → `script1`（算法编排）成功生成（不抛 ValueError），含 manifest 行 + `amp-dada2-se` 调用。
@@ -316,7 +327,7 @@ class ToolGenesisService:
 
 **待用户拍板**（非阻塞，先按推荐做）：
 - 生成脚本落盘目录：推荐 `scripts/Amplicon/generated/`（与 `scripts/` 隔离）。
-- 首版只生成**单个**补齐工具（amp-dada2-se）；多工具编排留后续。
+- 首版一次缺口只生成**单个**补齐工具（具体是什么由 LLM 当场决定）；多工具编排留后续。
 
 ---
 
