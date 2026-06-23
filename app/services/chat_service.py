@@ -175,6 +175,36 @@ class ChatService:
         return "、".join(DATA_TYPE_NAMES.get(t, t) for t in type_ids)
 
     @staticmethod
+    def _domain_examples(db: Session, domain_id: int) -> tuple[list[str], list[str]]:
+        """从当前领域词表/工具图动态推导 (可上传数据示例, 可选分析示例)。
+
+        - 数据示例：该域 is_uploadable=1 的类型（用户可能已拥有的根输入）。
+        - 分析示例：该域工具图的「终端产物」——某工具产出但无工具消费的类型，
+          即用户可定的分析目标（排除中间产物）。
+        各上限 6 条，供 CASE B/C 追问时按域填充，不再写死 amplicon。
+        """
+        try:
+            vocab = DomainService.get_type_vocab(db, domain_id)
+            data_examples = [t["label"] for t in vocab if t.get("is_uploadable")][:6]
+
+            tools = DomainService.get_domain_tools(db, domain_id)
+            all_inputs: set[str] = set()
+            for t in tools:
+                all_inputs.update(t.inputs)
+            label_by_id = {t["type_id"]: t["label"] for t in vocab}
+            goal_examples: list[str] = []
+            for t in tools:
+                for o in t.outputs:
+                    if o in all_inputs:
+                        continue  # 被下游消费 → 中间产物，跳过
+                    lbl = label_by_id.get(o, o)
+                    if lbl not in goal_examples:
+                        goal_examples.append(lbl)
+            return data_examples, goal_examples[:6]
+        except Exception:
+            return [], []
+
+    @staticmethod
     def _get_previously_used_paths(db: Session, user_id: int) -> set[str]:
         """查询当前用户历史选择过的路径，返回排序后的 tool_ids 字符串集合"""
         user_task_ids = [t.id for t in Task.where(db, user_id=user_id).all()]
@@ -217,16 +247,16 @@ class ChatService:
         # CASE B: 知道输入但不知道目标 → 追问目标
         if available and not goals:
             input_names = ChatService._format_data_type_names(available)
+            _, goal_examples = ChatService._domain_examples(db, domain_id)
+            goal_list = (
+                "\n".join(f"- {g}" for g in goal_examples)
+                if goal_examples else "- （请描述您想做的分析）"
+            )
             return {
                 "type": "clarification",
                 "content": (
                     f"我了解到您目前拥有以下数据：{input_names}。\n\n"
-                    "请问您希望进行哪些分析？例如：\n"
-                    "- 物种分类注释\n"
-                    "- Alpha/Beta 多样性分析\n"
-                    "- 差异分析（LEfSe、T检验等）\n"
-                    "- 可视化（热图、网络图、柱状图等）\n"
-                    "- 功能预测\n\n"
+                    f"请问您希望进行哪些分析？例如：\n{goal_list}\n\n"
                     "您也可以说\"全流程\"进行完整分析。"
                 ),
                 "data": "",
@@ -236,15 +266,16 @@ class ChatService:
         # CASE C: 知道目标但不知道输入 → 追问数据
         if goals and not available:
             goal_names = ChatService._format_data_type_names(goals)
+            data_examples, _ = ChatService._domain_examples(db, domain_id)
+            data_list = (
+                "\n".join(f"- {d}" for d in data_examples)
+                if data_examples else "- （请描述您的数据类型）"
+            )
             return {
                 "type": "clarification",
                 "content": (
                     f"您想要进行的分析：{goal_names}。\n\n"
-                    "请问您目前有什么数据？例如：\n"
-                    "- 双端测序原始数据（FASTQ）\n"
-                    "- FASTA 序列文件\n"
-                    "- 已做完 DADA2 去噪的 ASV 表\n"
-                    "- 已做完质控的序列\n\n"
+                    f"请问您目前有什么数据？例如：\n{data_list}\n\n"
                     "请描述您的数据类型，以便我为您规划分析流程。"
                 ),
                 "data": "",

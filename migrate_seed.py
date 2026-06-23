@@ -851,11 +851,7 @@ def seed_stats_domain():
                     "无需从原始测序数据开始。"
                 ),
                 is_active=1,
-                keywords=(
-                    "随机森林,LEfSe,T检验,Wilcoxon,MetaStat,SIMPER,Anosim,差异分析,"
-                    "差异物种,生物标志物,PCA,PCoA,NMDS,DCA,排序,降维,主成分,主坐标,"
-                    "丰度表,相对丰度,特征表"
-                ),
+                keywords="相对丰度,丰度表,特征表,距离矩阵,绝对丰度",
                 examples=json.dumps([
                     "我要做个随机森林分析",
                     "我有相对丰度表，想跑LEfSe找生物标志物",
@@ -872,6 +868,15 @@ def seed_stats_domain():
         else:
             print("stats domain already exists.")
         stats_id = domain.id
+
+        # 关键词以「已有数据表」信号为准：方法名（随机森林/PCoA/LEfSe…）在 amplicon
+        # 全流程里也存在，不能当 stats 标识（会把"原始数据+PCoA"误判进 stats）。
+        # 外科式同步：仅当现存 keywords 仍是旧的"含方法名"版本时覆盖，不动未来管理员编辑。
+        canonical_keywords = "相对丰度,丰度表,特征表,距离矩阵,绝对丰度"
+        if "随机森林" in (domain.keywords or ""):
+            domain.keywords = canonical_keywords
+            session.commit()
+            print("  Corrected stats keywords (removed method names).")
 
         # 2) 分类文件夹
         folder_map: dict[str, int] = {}
