@@ -35,4 +35,6 @@ scripts/uploaded/
 # Ad-hoc test scripts
 test_playwright.py
 *.log
+conv_err.txt
+requirements_utf8.txt
 
