@@ -255,6 +255,7 @@ def seed():
     backfill_md_content()
     backfill_md_fields()
     backfill_call_param_descriptions()
+    seed_stats_domain()
 
 
 def migrate():
@@ -819,6 +820,156 @@ def backfill_md_content():
                     break
         session.commit()
         print(f"Backfilled md_content: {filled} scripts got .md docs.")
+    finally:
+        session.close()
+
+
+def seed_stats_domain():
+    """新增「下游统计与排序分析」领域（code=stats），用于多库分流端到端测试。
+
+    采用 copy 方案：amplicon 全流程原样保留，把统计检验+排序分析 10 个脚本克隆到
+    stats 域。这些脚本的根输入是已处理的丰度表/ASV 表（用户自带），可形成单步或
+    短链路径（如"随机森林分析"= 上传相对丰度表 → amp-randomforest → RF_RESULT）。
+
+    全程幂等：domain/folder/script/data_type 已存在则跳过。必须在所有 amplicon
+    回填（call_params/md_content/md_fields）跑完后调用，克隆时字段才完整。
+    """
+    from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES, DATA_TYPE_TO_FILE_REQUIREMENT
+
+    session = SessionLocal()
+    try:
+        # 1) 领域
+        domain = session.query(Domain).filter(Domain.code == "stats").first()
+        if not domain:
+            domain = Domain(
+                name="下游统计与排序分析",
+                code="stats",
+                description=(
+                    "基于已有丰度表/特征表的下游多变量统计与排序分析：差异检验"
+                    "（随机森林、LEfSe、T检验/Wilcoxon、MetaStat、SIMPER、Anosim）与"
+                    "降维排序（PCA、PCoA、NMDS、DCA）。用户自带已处理的相对丰度表或 ASV 表，"
+                    "无需从原始测序数据开始。"
+                ),
+                is_active=1,
+                keywords=(
+                    "随机森林,LEfSe,T检验,Wilcoxon,MetaStat,SIMPER,Anosim,差异分析,"
+                    "差异物种,生物标志物,PCA,PCoA,NMDS,DCA,排序,降维,主成分,主坐标,"
+                    "丰度表,相对丰度,特征表"
+                ),
+                examples=json.dumps([
+                    "我要做个随机森林分析",
+                    "我有相对丰度表，想跑LEfSe找生物标志物",
+                    "帮我做个T检验比较两组差异物种",
+                    "画个PCA图看看样本聚类",
+                    "做NMDS排序分析",
+                ], ensure_ascii=False),
+                script_root="Amplicon",
+                sort_order=2,
+            )
+            session.add(domain)
+            session.commit()
+            print("Created stats domain.")
+        else:
+            print("stats domain already exists.")
+        stats_id = domain.id
+
+        # 2) 分类文件夹
+        folder_map: dict[str, int] = {}
+        for cat, order in [("统计检验", 1), ("排序分析", 2)]:
+            f = (
+                session.query(ScriptFolder)
+                .filter(ScriptFolder.domain_id == stats_id, ScriptFolder.name == cat)
+                .first()
+            )
+            if not f:
+                f = ScriptFolder(name=cat, parent_id=0, domain_id=stats_id, sort_order=order)
+                session.add(f)
+                session.commit()
+            folder_map[cat] = f.id
+
+        # 3) 克隆 10 个脚本（从 amplicon 同 tool_id 行复制，字段零偏差）
+        clone_plan: dict[str, list[str]] = {
+            "统计检验": ["amp-randomforest", "amp-lefse", "amp-ttest", "amp-simper",
+                       "amp-metastat", "amp-catecomp"],
+            "排序分析": ["amp-pca", "amp-pcoa", "amp-nmds", "amp-dca"],
+        }
+        amplicon = session.query(Domain).filter(Domain.code == "amplicon").first()
+        if not amplicon:
+            print("  WARN: amplicon 领域不存在，无法克隆脚本。")
+            return
+        cloned = 0
+        for cat, ids in clone_plan.items():
+            for tid in ids:
+                if session.query(Script).filter(
+                    Script.domain_id == stats_id, Script.tool_id == tid
+                ).first():
+                    continue
+                src = session.query(Script).filter(
+                    Script.domain_id == amplicon.id, Script.tool_id == tid
+                ).first()
+                if not src:
+                    print(f"  WARN: amplicon 源脚本 {tid} 不存在，跳过。")
+                    continue
+                ns = Script(
+                    name=src.name,
+                    description=src.description,
+                    folder_id=folder_map[cat],
+                    tool_id=src.tool_id,
+                    category=cat,
+                    version=src.version,
+                    file_path=src.file_path,
+                    md_content=src.md_content,
+                    inputs=src.inputs,
+                    outputs=src.outputs,
+                    md_inputs=src.md_inputs,
+                    md_outputs=src.md_outputs,
+                    runtime=src.runtime,
+                    cost=src.cost,
+                    weight=src.weight,
+                    verified=1,
+                    is_active=1,
+                    uploaded_by=1,
+                    verified_by=1,
+                    valid_from=src.valid_from,
+                    valid_until=src.valid_until,
+                    domain_id=stats_id,
+                    call_params=src.call_params,
+                    call_outputs=src.call_outputs,
+                    per_sample=src.per_sample,
+                )
+                session.add(ns)
+                cloned += 1
+        session.commit()
+        print(f"  Cloned {cloned} scripts into stats domain.")
+
+        # 4) 数据类型词表（5 可上传输入 + 10 产物）
+        input_types = ["RELATIVE_ABUNDANCE", "ASV_TABLE_EVEN", "PCOA_COORDS",
+                       "DIST_MATRIX", "EVEN_ABS_ABUNDANCE"]
+        goal_types = ["RF_RESULT", "LEFSE_RESULT", "TTEST_RESULT", "SIMPER_RESULT",
+                      "METASTAT_RESULT", "CATECOMP_RESULT", "PCA_PLOT", "PCOA_PLOT",
+                      "NMDS_PLOT", "DCA_PLOT"]
+        added = 0
+        for tid in input_types + goal_types:
+            if session.query(DataType).filter(
+                DataType.domain_id == stats_id, DataType.type_id == tid
+            ).first():
+                continue
+            uploadable = tid in input_types
+            req = DATA_TYPE_TO_FILE_REQUIREMENT.get(tid, {})
+            label = DATA_TYPE_NAMES.get(tid, tid)
+            session.add(DataType(
+                domain_id=stats_id,
+                type_id=tid,
+                label=req.get("label", label) if req else label,
+                description=req.get("description", "") if req else label,
+                extensions=json.dumps(req.get("extensions", [".tsv", ".csv"]), ensure_ascii=False),
+                required=1,
+                multiple=0,
+                is_uploadable=1 if uploadable else 0,
+            ))
+            added += 1
+        session.commit()
+        print(f"  Added {added} data types for stats domain.")
     finally:
         session.close()
 
