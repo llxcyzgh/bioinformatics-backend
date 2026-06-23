@@ -1,0 +1,364 @@
+# 智能追问 + 现生成单步工具 开发计划
+
+> 分支：`feat/smart-clarify-toolgen`（从 `henry-dev` 切出）
+> 起草日期：2026-06-23
+> 关联：`INTENT_DOMAIN_REWORK_PLAN.md`（意图/领域分流 T1-T7，已完成）、`C:\Users\henry\.claude\plans\cuddly-inventing-frog.md`（per-sample 编排泛化，暂停，本计划 Phase 5 复用其 step 4）
+
+---
+
+## 0. 背景与目标
+
+### 0.1 现状（已完成的基础）
+- 领域分流 + 相关性闸（`DomainClassifier`）：`原始数据 + PCoA` 已能正确落入 **amplicon**（Fix B，commit `0255a6d`）。
+- 域感知追问模板（`_domain_examples`）：CASE B/C 不再写死 amplicon（commit `0255a6d`）。
+- 第二个活动库 **stats**（id=7）已就绪，多库场景可测（commit `315c35d`）。
+
+### 0.2 这次要解决的诉求（用户原话精炼）
+系统**不应仅凭手头工具判断**，而要**按生信常识判断**——用户心里并不知道系统有什么脚本。所以：
+
+1. 「我有原始数据要做 PCoA」→ 系统判定这是**扩增子分析类任务**，但**单端/双端客观未知**，应**追问**（而不是默认双端直接出流水线）。
+2. 若用户答**单端**：系统目前**没有现成单端流程**，但 LLM **有能力现生成一个单步脚本**补齐。此时应追问：「这块我本来干不了，但我是个聪明的系统，可以给你现生成一个脚本，要不要？」
+3. 用户同意后：生成脚本 → **自动录入脚本库** → 与既有脚本**串成有效流水线** → 重新规划 → 上传执行。
+
+### 0.3 用户明确的核心约束
+- **生成产物 = 单步工具级脚本**（同 cutadapt/dada2 级别），**不是**一个把整条任务包圆的大脚本。
+- 新脚本的**输入/输出必须能与既有脚本串成有效流水线**。
+- 新脚本要**自动录入脚本库**（即写入 `Script` 表 + 落盘 .sh + 进入工具图）。
+
+---
+
+## 1. 目标交互流程（用户视角剧本）
+
+```
+用户：我有原始数据要做 PCoA 分析
+系统：听起来是扩增子分析。先确认一下：你的原始测序数据是【单端】还是【双端】？
+      （双端我有现成流程；单端目前没有现成的，但我可以临时给你生成一个。）
+用户：单端
+系统：单端目前平台没有现成流程。不过我可以现生成一个「单端 DADA2 去噪」脚本来补齐，
+      生成后就能接上后续的物种注释、多样性、PCoA。要我现在生成吗？
+用户：好
+系统：[生成中… 已生成 amp-dada2-se 并录入脚本库]
+      好了。基于单端数据 → 单端DADA2去噪 → 物种注释 → 特征表 → 多样性 → PCoA，
+      规划出如下方案：[展示路径]。请上传你的单端 fastq 文件。
+用户：[上传]
+系统：[生成编排脚本 → 执行]
+```
+
+---
+
+## 2. 代码地图（grounding：现状 / 是否要改）
+
+| 环节 | 文件:位置 | 现状 | 本次是否改 |
+|---|---|---|---|
+| 领域分流 | `app/services/domain_classifier.py` | `原始数据+PCoA`→amplicon 已通 | 否 |
+| amplicon 解析 prompt | `pkg/amplicon/llm_parser.py:37` `SYSTEM_PROMPT` | 只列 `FASTQ_PAIR=双端`，无单端；规则让"原始数据"默认双端 | **改**（Phase 1）|
+| 动态 prompt 构造 | `pkg/amplicon/llm_parser.py:233` `build_system_prompt` | 非 amplicon 用；从 DB 词表构建 | 改（同 Phase 1，加单端规则）|
+| 解析结果校验 | `pkg/amplicon/llm_parser.py:353` `_validate` | 拒绝词表外类型 ID | 否（但要先加 `FASTQ_SINGLE` 进词表）|
+| 解析入口/amplicon 分支 | `app/services/chat_service.py:487` | `if domain.code=="amplicon"` 走硬编码 prompt | 否（Phase 1 只改 prompt 内容）|
+| 路由 4 CASE | `app/services/chat_service.py:232` `_route_decision` | CASE A/B/C/D；CASE C（知目标不知数据）会问数据；CASE D 低置信分支**仍写死 amplicon** | **改**（Phase 1：原始数据模糊→专门追问；修 CASE D 残留）|
+| 通用澄清 prompt | `pkg/amplicon/llm_parser.py:146` `CLARIFICATION_SYSTEM_PROMPT` | 静态、不感知具体模糊点 | **改/扩**（Phase 1：单/双端定向追问）|
+| 工具图加载 | `app/services/domain_service.py:42` `get_domain_tools` | 读 `Script.where(domain_id, verified=1, is_active=1)` + 内存缓存 | 用（新脚本注册后 `invalidate`）|
+| 规划器 | `app/services/planner_service.py:22` `plan_workflow` | BFS over DB 工具图；新工具进图后自动可用 | 用（Phase 4 重规划）|
+| 根输入推导 | `app/services/domain_service.py:108` `resolve_required_files` | 从工具链推上传需求 | 用（Phase 4 验证 FASTQ_SINGLE 上传）|
+| 既有 codegen | `app/services/chat_service.py:840` `_generate_script_with_llm` | 喂**既有**脚本内容给 LLM 拼大脚本 | 否（参考其模式，不复用）|
+| 编排器-通用步 | `pkg/amplicon/orchestrator.py:379` `_build_single_command` | 非 per-sample 工具按 data_type 解析，**任意 tool_id 都行** | 用（amp-dada2-se 走这里）|
+| 编排器-manifest | `pkg/amplicon/orchestrator.py:352` `_gen_dada2_step` + `:194` `if tool_id=="amp-dada2"` | 写死 tool_id | **改**（Phase 5：按 `_MANIFEST` 参数检测，让 amp-dada2-se 也走 manifest）|
+| 编排器-FASTQ 解析 | `pkg/amplicon/orchestrator.py:87` `_resolve_fastq_pair_uploads` | 只认 FASTQ_PAIR（R1/R2 配对） | **改**（Phase 5：加 FASTQ_SINGLE 多文件解析）|
+| per-sample 区 | `pkg/amplicon/orchestrator.py:304` `_gen_parallel_region` | 对 cutadapt/flash/frags-qc 之外 per-sample 工具 `raise ValueError` | **不改**（amp-dada2-se 非 per-sample，绕开；完整泛化见 cuddly-inventing-frog）|
+| 脚本注册（克隆范式） | `migrate_seed.py:918` `seed_stats_domain` | 字段零偏差克隆：verified/is_active/call_params/call_outputs/per_sample/file_path | 参考（Phase 3 的注册契约照此）|
+| Script 模型 | `app/models/script.py` | 字段齐全（verified/is_active/call_params/call_outputs/per_sample/domain_id/file_path/inputs/outputs）| 用 |
+
+---
+
+## 3. 架构设计
+
+### 3.1 为什么选 `amp-dada2-se` 作为单端补齐工具（关键决策）
+
+单端扩增子的缺口**只在 per-sample 前处理**（cutadapt/flash/frags-qc 都是双端专用）。但 QIIME2 的 `dada2 denoise-single` 可以**一步**完成「引物切除 + 去噪 + 生成 ASV」，直接吃单端 fastq 的 manifest。因此：
+
+- **一个工具** `amp-dada2-se`：`FASTQ_SINGLE → FEATURE_SEQS, FEATURE_TABLE, FEATURE_FASTA`
+- **非 per-sample**（像 `amp-dada2` 一样吃 manifest，一次性处理所有样本）→ **绕开** `_gen_parallel_region` 的 `ValueError` 地雷。
+- 输出**故意复用** `amp-dada2` 的输出类型 → 下游脚本**零改动**即可衔接。
+
+科学性前提：单端扩增子适用于**短读区**（如单独 V4 ≈250bp、ITS 子区），读长能覆盖整个扩增子。用户主动说"单端"即默认此场景成立。
+
+> 备选（**不采用**）：生成 `amp-cutadapt-se`+`amp-frags-qc-se`+`amp-dada2-se` 三件 per-sample 工具。前两个会撞 `_gen_parallel_region` 硬编码，必须先做完整 per-sample 泛化（cuddly-inventing-frog），工作量翻倍且首版用不上。留作后续。
+
+### 3.2 生成产物契约 = 一个 `ScriptCallDef` + 一个 `.sh`
+
+LLM 生成的不是"一段大脚本"，而是与 cutadapt/dada2 **同构的单步工具**，产出两样东西：
+
+**(a) `.sh` 脚本**（落盘到 `scripts/generated/amp-dada2-se.sh`，风格对齐既有 `step3_dada2.sh`）：
+- `#!/bin/bash`，`set -euo pipefail`
+- 参数解析（`getopts` 或 case），接受 `-m manifest.tsv` + 若干 `_CONFIG` 参数（如 `--trunc-qmin`、`--trunc-len`）
+- 核心调用 `qiime dada2 denoise-single --i-demultiplexed-seqs ... --p-trunc-len ...`
+- 输出 `featureSeqs.qza / featureTable.biom / feature.fasta`
+
+**(b) JSON 契约**（写入 `Script` 行的 `call_params`/`call_outputs`/`inputs`/`outputs`/`per_sample`）：
+```json
+{
+  "tool_id": "amp-dada2-se",
+  "name": "单端DADA2去噪",
+  "inputs": ["FASTQ_SINGLE"],
+  "outputs": ["FEATURE_SEQS", "FEATURE_TABLE", "FEATURE_FASTA"],
+  "call_params": [
+    {"flag": "-m", "data_type": "_MANIFEST"},
+    {"flag": "--trunc-len", "data_type": "_CONFIG", "default": "0", "required": false}
+  ],
+  "call_outputs": [
+    {"data_type": "FEATURE_SEQS",   "filename": "featureSeqs.qza"},
+    {"data_type": "FEATURE_TABLE",  "filename": "featureTable.biom"},
+    {"data_type": "FEATURE_FASTA",  "filename": "feature.fasta"}
+  ],
+  "per_sample": 0,
+  "category": "核心分析"
+}
+```
+
+### 3.3 串链不变式（必须满足，否则注册前拒收）
+
+> 新工具的**每个输出类型**，要么命中至少一个既有下游工具的**输入**，要么是用户目标类型。
+
+`amp-dada2-se` 自检：
+
+| 输出类型 | 被谁消费（既有工具） | 是否到达 PCoA |
+|---|---|---|
+| `FEATURE_SEQS` | `amp-taxonomy`(→TAXONOMY_ASSIGN)、`amp-phylogeny`(→ROOTED_TREE) | ✓ 经 phylogeny |
+| `FEATURE_TABLE` | `amp-feature-tables`(→ASV_TABLE)、`amp-funpre` | ✓ 经 feature-tables |
+| `FEATURE_FASTA` | `amp-genus-tree`、`amp-funpre` | （旁路）|
+
+完整可达链：
+```
+FASTQ_SINGLE →[amp-dada2-se]→ FEATURE_SEQS + FEATURE_TABLE
+  FEATURE_SEQS →[amp-phylogeny]→ ROOTED_TREE
+  FEATURE_SEQS →[amp-taxonomy]→ TAXONOMY_ASSIGN
+  FEATURE_TABLE + TAXONOMY_ASSIGN →[amp-feature-tables]→ ASV_TABLE
+  ASV_TABLE →[amp-table-stats]→ ASV_TABLE_EVEN
+  ASV_TABLE_EVEN + ROOTED_TREE →[amp-beta-data]→ PCOA_COORDS
+  PCOA_COORDS →[amp-pcoa]→ PCOA_PLOT ✓
+```
+BFS 规划器应能自动找出此路径（Phase 4 验证）。
+
+### 3.4 自动录入脚本库的契约
+
+注册一行 `Script`（照 `seed_stats_domain` 克隆范式的字段集），关键点：
+- `domain_id` = 当前任务领域（amplicon=1）
+- `verified=1, is_active=1` → **立即进工具图**（`get_domain_tools` 的过滤条件）
+- `tool_id` 全局唯一（生成时查重，已存在则复用而非重复生成）
+- `inputs/outputs` = JSON 类型 ID 串（建图用）
+- `call_params/call_outputs/per_sample` = 编排器调用所需（同 3.2）
+- `file_path` = `Amplicon/generated/amp-dada2-se.sh`（相对 `$AMPLICON_ROOT`，编排器拼 `${AMPLICON_ROOT}/{file_path}`）
+- 落盘 .sh 到 `scripts/Amplicon/generated/`（种子脚本在 `scripts/Amplicon/scripts/`，新生成的放 `generated/` 子目录与人工脚本隔离）
+- 注册后 **`DomainService.invalidate(domain_id)`** 清工具图缓存，否则规划器看不到新工具
+
+> 安全权衡：`verified=1` 跳过了"人工校验"环节（`Script` 注释里写明默认未启用需人工校验）。本特性的卖点正是"自动可用"，故接受；但生成脚本需过**契约校验 + 语法粗检**（Phase 3），并把 `uploaded_by` 记为系统/当前用户以便审计。
+
+---
+
+## 4. 分阶段实现
+
+### Phase 1：常理追问——原始数据单/双端不明时脱钩工具词表
+
+**目标**：`我有原始数据要做 PCoA` → 解析器**不默认双端**，留白 `available` + 标低置信 → 触发**定向追问**（问单/双端，且明示单端无现成流程）。追问文案来自**生信常识 + 当前模糊点**，不被工具词表菜单绑架。
+
+**改动**：
+1. **加单端类型**（3 处）：
+   - `app/models`/种子：在 amplicon 域 `DataType` 加 `FASTQ_SINGLE`（`is_uploadable=1, multiple=1, extensions=[.fastq,.fastq.gz,.fq.gz]`）
+   - `pkg/amplicon/amplicon_tools.py:123` `DATA_TYPE_NAMES` 加 `"FASTQ_SINGLE": "单端测序原始数据"`
+   - `pkg/amplicon/amplicon_tools.py:21` `DATA_TYPE_TO_FILE_REQUIREMENT` 加 `FASTQ_SINGLE` 条目
+2. **改 amplicon 硬编码 prompt**（`llm_parser.py:37` `SYSTEM_PROMPT`）：
+   - 输入类型清单加 `FASTQ_SINGLE：单端测序原始数据`
+   - 改识别规则：**"用户提原始数据/fastq 但未说单/双端 → `available_inputs` 返回 `[]`（不要默认双端），`confidence=low`，`scenario_description` 注明'原始数据单/双端不明'"**
+   - 用户明确说"单端"→ `["FASTQ_SINGLE"]`；明确"双端/R1R2"→ `["FASTQ_PAIR"]`
+3. **同步 `build_system_prompt`**（`llm_parser.py:233`）：把"原始数据未明单/双端→留白低置信"写进通用规则（非 amplicon 域将来也受益）。
+4. **`_route_decision` 加原始数据模糊分支**（`chat_service.py:232`）：
+   - 检测：`goals` 非空 + `available` 空 + 文本含原始数据信号（fastq/原始数据/下机/双端/单端）+ `confidence in (low, medium)`
+   - 命中 → 调用新方法 `_raw_data_layout_clarification(domain)` 生成定向追问（LLM，带领域 + "单端无现成流程"提示），**不走** 静态 CASE C 模板
+   - 否则维持现有 CASE C（`_domain_examples` 列表里现在会同时含 FASTQ_PAIR 与 FASTQ_SINGLE，自然提示二选一）
+5. **修 CASE D 低置信残留**（`chat_service.py:294`）：把写死的"双端 FASTQ 还是 ASV 表"改成 `_domain_examples` 动态填充（Fix A 漏掉的分支）。
+
+**验证**：
+- 直接调 `ParserService.parse("我有原始数据要做PCoA分析", [], domain_types=None)` → 期望 `available_inputs==[]`、`confidence in (low,medium)`、`goal_types` 含 PCoA 相关。
+- 端到端 `chat()` → 追问文案含"单端/双端"且提到单端无现成流程；**不再**直接出 11 步双端流水线。
+- 回归：`我有双端原始数据做PCoA` → 仍走 `FASTQ_PAIR` → CASE D 正常规划。
+
+**风险**：解析器改"不默认双端"后，历史话术"我有原始数据想做扩增子全流程"也会变追问——这是**预期**（本来就该问），但要在文案里给出"全流程"快捷口子。
+
+---
+
+### Phase 2：能力缺口识别——"合理但做不了"
+
+**目标**：用户答单端后，规划器返回空（无 FASTQ_SINGLE 根的路径）→ 不要走"暂时无法找到方案"通用兜底，而是判定这是**合理但缺工具**的缺口。
+
+**改动**：
+1. **`_route_decision` 的 no-candidates 分支**（`chat_service.py:304`）前插一层：
+   - 调用新方法 `_classify_capability_gap(db, domain_id, available, goals, content)`：
+     - LLM 单次判定：「给定该领域、用户数据描述、目标，这是不是一个**合理的生信任务、只是平台当前缺对应工具**？」输出 `{plausible: bool, missing_link: str}`（如 `missing_link="FASTQ_SINGLE → FEATURE_TABLE"`）
+     - `plausible=true` → 返回 `type="capability_gap"`（带 `missing_link`、`domain_id`、`available/goal_types`），交给 Phase 3 的提议分支
+     - `plausible=false` → 维持现有通用兜底
+2. 解析用户答"单端"的回合：`available=["FASTQ_SINGLE"]`、`goals=[PCOA_PLOT]` → 规划器空 → `_classify_capability_gap` 判 plausible → 进入提议。
+
+**验证**：
+- 构造 `available=["FASTQ_SINGLE"], goals=["PCOA_PLOT"]` 调 `plan_workflow` → 空。
+- `_classify_capability_gap` 对此返回 `plausible=true, missing_link≈"FASTQ_SINGLE→FEATURE_TABLE/去噪"`。
+- 对照：`available=["FASTQ_PAIR"], goals=["PCOA_PLOT"]` 应能规划出路径（非缺口）。
+
+**风险**：LLM 把无意义输入也判成 plausible → 提议生成垃圾脚本。用低 temperature + 给反例（天气/闲聊）压制；生成的脚本还要过 Phase 3 契约校验兜底。
+
+---
+
+### Phase 3：现生成单步工具 + 自动录入（核心）
+
+**目标**：用户同意后，生成 `amp-dada2-se`（.sh + 契约），校验串链，落盘 + 写 `Script` 行 + 清缓存。
+
+**改动**：新建 `app/services/tool_genesis_service.py`：
+
+```
+class ToolGenesisService:
+    @staticmethod
+    def generate_and_register(db, domain_id, gap_spec, user_id) -> dict:
+        # 1) 查重：tool_id 已存在且 active → 直接复用，不重复生成
+        # 2) LLM 生成（参考既有 step3_dada2.sh 作风格 few-shot）：
+        #    system: "你是生信脚本工程师。生成一个【单步】bash 工具脚本 + 其 I/O 契约 JSON。
+        #             风格对齐示例。只做一步，不要拼整条流水线。"
+        #    user: gap_spec（缺失链 FASTQ_SINGLE→FEATURE_TABLE、领域、目标 PCoA）
+        #          + 既有同族脚本片段（dada2.sh）作风格参考
+        #    response_format: json_object，含 {sh_content, contract}
+        # 3) 契约校验（不过则报错、不注册）：
+        #    - tool_id 合法且唯一
+        #    - outputs 非空，且每个 output 命中"既有下游输入 ∪ 用户目标"（串链不变式 3.3）
+        #    - inputs/outputs/call_params/call_outputs 结构合法
+        #    - sh_content 粗检：含 #!/bin/bash、核心命令（denoise-single）、参数解析
+        # 4) 落盘 sh_content → scripts/Amplicon/generated/<tool_id>.sh
+        # 5) 写 Script 行（verified=1,is_active=1,domain_id,...照 3.4 契约）
+        # 6) DomainService.invalidate(domain_id)
+        # 7) 返回 {tool_id, script_id, tool_chain_preview}
+```
+
+**`_route_decision` 加提议分支**（接 Phase 2 的 `capability_gap`）：
+- 首次缺口 → `type="offer_codegen"`：文案「这块我本来干不了，但我可以现生成一个 `<missing_link>` 的单步脚本，生成后就能接上既有流程。要吗？」+ 按钮
+- 用户同意（新一轮 chat，带同意信号）→ 调 `ToolGenesisService.generate_and_register` → 拿到新 tool_id → **立刻 Phase 4 重规划** → 回 `type="workflow"` 展示含新工具的路径
+
+**验证**：
+- 直接调 `generate_and_register(domain_id=1, gap_spec={...FASTQ_SINGLE→FEATURE_TABLE...})`：
+  - `scripts/Amplicon/generated/amp-dada2-se.sh` 落盘且可读
+  - DB 多一行 `Script(tool_id=amp-dada2-se, verified=1, is_active=1, domain_id=1)`
+  - `DomainService.get_domain_tools(db, 1)` 现在含 `amp-dada2-se`
+- 串链不变式：注册前校验 `outputs ⊆ (下游输入 ∪ 目标)`，不满足则拒注。
+- 幂等：同 gap 第二次调用 → 查重命中 → 复用，不重写 .sh / 不新增行。
+
+**风险**：
+- LLM 生成脚本的**可靠性**：无完整参考（单端 dada2 没现成脚本）→ 较自由 → 可能产出跑不起来的脚本。缓解：喂 `step3_dada2.sh` 作风格 few-shot + 契约/语法粗检 + 执行失败时如实报错（编排器已有 `algo_error` 机制 `chat_service.py:1103`）。
+- 跳过人工 `verified`：接受（卖点是自动可用），但 `uploaded_by` 记系统用户、`description` 标注「LLM 现生成」便于审计/回滚。
+
+---
+
+### Phase 4：重新规划 + 串链/上传验证
+
+**目标**：注册后重新跑规划器，确认含 `amp-dada2-se` 的路径出现、前端路径图能展示、`resolve_required_files` 推出 `FASTQ_SINGLE` 上传需求。
+
+**改动**：基本无新代码（机制已具备），主要是接线和验证：
+- Phase 3 注册后，`PlannerService.plan_workflow(db, 1, ["FASTQ_SINGLE"], ["PCOA_PLOT"])` 应返回含 `amp-dada2-se` 的候选。
+- `_enrich`（`planner_service.py:41`）会从 DB 补展示属性；`per_sample` 当前从静态 `TOOL_SCRIPT_CALLS` 取（`planner_service.py:72`）→ amp-dada2-se 不在其中 → `per_sample=False`（正确，它非 per-sample）。**无需改 `_enrich`**。
+- `DomainService.resolve_required_files(db, 1, [tool_chain])` → 应推出 `FASTQ_SINGLE`（multiple=True）的上传需求。
+- 前端路径图：新节点 `amp-dada2-se` 走通用渲染（与 stats 域克隆脚本同路径），无需前端改。
+
+**验证**：
+- 规划出路径，tool_chain 头部是 `amp-dada2-se`，尾部是 `amp-pcoa`。
+- `resolve_required_files` 含 `{typeId:"FASTQ_SINGLE", multiple:true, extensions:[.fastq,.fastq.gz]}`。
+- 路径图 API `/api/.../graph` 含新节点 + 它到 `amp-taxonomy`/`amp-feature-tables` 的边（类型 `FEATURE_SEQS`/`FEATURE_TABLE`）。
+
+---
+
+### Phase 5：单端执行支持（让 amp-dada2-se 真能跑）
+
+**目标**：上传单端 fastq → 生成编排脚本（manifest 正确）→ 执行。这是把 demo 从"规划出路径"推进到"真出结果"的收尾。
+
+**改动**（编排器三处小改，**不做**完整 per-sample 泛化）：
+1. **FASTQ_SINGLE 上传解析**（`orchestrator.py:87` `_resolve_fastq_pair_uploads` 旁加 `_resolve_fastq_single_uploads`）：
+   - 把所有单端 fastq 上传文件 → `samples: {sample_name: {"SE": stored}}`
+   - `generate_orchestrator_script` 里 `if FASTQ_SINGLE in required_files` 分支：建 `samples` + 不拆 R1/R2
+2. **manifest 步骤泛化**（`orchestrator.py:194`）：
+   - 现状：`if tool_id == "amp-dada2"` → `_gen_dada2_step`
+   - 改：`if any(p.data_type == "_MANIFEST" for p in call_def.params)` → `_gen_manifest_step(...)`
+   - `_gen_manifest_step` 按 `samples`（单端用 `{"SE": path}`，双端用 `{sample}.fastq`）写 manifest 行；其余同现状
+   - （这正是 `cuddly-inventing-frog.md` 的 step 4，单点复用，不引入整个暂停计划）
+3. **`amp-dada2-se.sh` 内容**：`denoise-single`（Phase 3 生成时即按此约束）。
+
+**验证**：
+- 上传 2 个单端 fastq → `confirm_upload` → `script1`（算法编排）成功生成（不抛 ValueError），含 manifest 行 + `amp-dada2-se` 调用。
+- `shellcheck`（若有）生成脚本无语法错。
+- 真实执行（若有 Docker/SGE 环境）：跑通到 PCoA；无环境则停在"编排脚本已生成"并如实标注。
+
+**风险**：manifest 单端/双端分支易写错 → 用单元化的小数据集（1-2 样本）端到端冒烟。
+
+---
+
+## 5. 串链不变式自检清单（Phase 3 注册前强制）
+
+- [ ] `tool_id` 在该 domain 内唯一（查 `Script.where(domain_id, tool_id)`）
+- [ ] `outputs` 每项 ∈ {既有工具 inputs 的并集} ∪ {用户目标类型}
+- [ ] `inputs` 至少含一个可上传根类型（`FASTQ_SINGLE`）或可由上游产出
+- [ ] `call_params` 里需 manifest 的工具有 `_MANIFEST` 参数；`call_outputs` 的 filename 与 .sh 实际产出一致
+- [ ] `.sh` 含 `#!/bin/bash`、参数解析、核心命令；`bash -n` 语法过
+
+---
+
+## 6. 风险与决策点
+
+| 风险 | 缓解 |
+|---|---|
+| LLM 生成脚本不可运行 | few-shot 喂同族脚本 + 契约/语法校验 + 执行失败如实报错（不静默） |
+| `verified=1` 跳过人工校验 | `uploaded_by`=系统、`description` 标注「LLM 现生成」、落盘 `generated/` 与人工脚本隔离、可一键软删 |
+| 缺口误判（闲聊也被提议生成） | Phase 2 LLM 低温度 + 反例；Phase 3 契约校验兜底 |
+| 解析器"不默认双端"影响存量话术 | 文案给"全流程"快捷口子；回归测双端话术仍走 FASTQ_PAIR |
+| 单端科学性（仅短读区成立） | 用户主动选单端即默认成立；可在追问文案里一句话提示 |
+
+**待用户拍板**（非阻塞，先按推荐做）：
+- 生成脚本落盘目录：推荐 `scripts/Amplicon/generated/`（与 `scripts/` 隔离）。
+- 首版只生成**单个**补齐工具（amp-dada2-se）；多工具编排留后续。
+
+---
+
+## 7. 验证策略（无测试框架）
+
+每 Phase 用一次性 Python 脚本（放 `scripts/uploaded/` 或临时文件，gitignore）直调服务层，绕过 HTTP：
+
+- **P1**：`ParserService.parse` 三组话术（原始数据不明 / 明确单端 / 明确双端）断言；`chat()` 看追问文案。
+- **P2**：`plan_workflow(FASTQ_SINGLE, PCOA_PLOT)==[]` + `_classify_capability_gap==plausible`。
+- **P3**：`generate_and_register` → 查 .sh 落盘 + DB 行 + `get_domain_tools` 含新工具 + 第二次调用幂等。
+- **P4**：`plan_workflow` 出含 amp-dada2-se 路径 + `resolve_required_files` 推出 FASTQ_SINGLE。
+- **P5**：`confirm_upload`（mock 单端上传）→ `script1` 生成无异常 + manifest 行正确。
+
+端到端：前端登录 → 对话「原始数据做PCoA」→ 追问 → 答单端 → 提议 → 同意 → 见路径 → 上传 → 见编排脚本。
+
+---
+
+## 8. 不做（Non-goals）
+
+- **完整 per-sample 编排泛化**（cutadapt-se/flash-se 等 per-sample 生成工具）：见 `cuddly-inventing-frog.md`，本计划只用其 step 4（manifest 泛化），amp-dada2-se 靠"非 per-sample"绕开其余。
+- **多生成工具的编排**：首版单工具补齐。
+- **生成脚本的前端管理/审计 UI**：DB 行 + 软删即可，UI 后续。
+- **RBAC / 生成权限控制**：已知占位（见 known-placeholder-features），不在本计划。
+- **修改 amplicon 硬编码解析器分支结构**（`chat_service.py:487`）：只改 prompt 内容，不动 if/else 结构。
+
+---
+
+## 9. 与既有计划/记忆的关系
+
+- 继承 `INTENT_DOMAIN_REWORK_PLAN.md` 的 T1-T7 成果（领域分流、相关性闸、stats 域）。本计划是其在"单领域内能力缺口"维度上的延伸。
+- 复用 `cuddly-inventing-frog.md`（per-sample 泛化，暂停）的 **step 4**（manifest 按 `_MANIFEST` 检测），不复活整个计划。
+- 不触碰已知占位（RBAC/JWT/admin 任务列表/admin 反馈/new.tsx）——审计别当 bug。
+- 后端启动用 `.venv/Scripts/python.exe -m uvicorn`；查 .env 先 `load_dotenv()`；SGE→env 仍是 deferred，不动。
+
+---
+
+## 10. 推荐执行顺序
+
+**P1 → P2 → P3 → P4 → P5**，每 Phase 可独立验证、独立提交。
+
+- P1+P2 把"常理追问 + 缺口识别"跑通（无需生成脚本即可演示智能追问）。
+- P3+P4 是核心（生成 + 注册 + 串链 + 重规划），跑通后即可演示"现生成工具并接入流水线"。
+- P5 让 demo 真能执行（到 PCoA），收尾。
+
+首版可停在 P4（规划出含新工具的路径 + 上传需求），P5 视执行环境有无再定。
