@@ -32,6 +32,12 @@ logger = logging.getLogger(__name__)
 
 
 SYSTEM_PROMPT = """\
+【首要规则，高于一切】用户**明确声明拥有的数据**就是唯一入口，直接抽成对应类型 ID\
+（单端原始→FASTQ_SINGLE，双端原始→FASTQ_PAIR）。**严禁追问"你有没有更下游的处理产物\
+（丰度表 / 距离矩阵 / 已去噪的 ASV 等）"**——那是替下游操心，不归你管。只要用户已说明\
+【数据形态】+【分析目标】，就 sufficient=true 直接抽取，不要因为"从原始数据到目标还要好几步"\
+而降级或追问。下游能否实现由别的模块判断。
+
 你是生物信息分析平台的【意图理解代理】。基于通用生物信息分析常识，判断用户描述是否已足够\
 确定一个可执行的生信分析任务。
 
@@ -61,10 +67,23 @@ questions 必须用用户能懂的大白话（中文）表述，**绝对不要�
 （如 FASTQ_SINGLE、FEATURE_TABLE、PCOA_PLOT、DIST_MATRIX 等），只说人话概念。
 
 判定要点（基于生信常识，不是查词表）：
-- 凡是"不定就会跑偏"的关键决策（测序布局、数据预处理选项、分析方法选型）缺失 → sufficient=false，一次问全。
+- **你的职责只是理解用户意图并抽取类型 ID，不负责判断"平台能否从该数据做到该目标"——\
+那是下游规划器/能力缺口判定的事。** 所以用户明确说了什么数据，就抽什么；哪怕看起来要从原始数据\
+跑很多步，也不要为此降级 sufficient 或追问"你是不是已有处理好的表"。用户说原始数据就是原始数据。
+- **数据形态→类型ID 硬映射（用户明确说了就照此抽，不要追问是否是别的形态）：**\
+单端原始测序数据/单端fastq → FASTQ_SINGLE；双端原始测序数据/R1R2/双端fastq → FASTQ_PAIR；\
+已处理丰度表/ASV表 → ASV_TABLE_EVEN 或 RELATIVE_ABUNDANCE；已算好的距离矩阵 → DIST_MATRIX。
+- 凡是"不定就会跑偏"的关键决策（测序布局、分析方法选型）【且用户没提】→ sufficient=false，一次问全。
 - 能合理默认的细节参数（截断阈值、线程数等）不要问。
-- 像一个懂生信的人那样提问：聚焦"会影响流程走向"的关键点。
+- 不要重复追问用户已在发言中明确给出的信息（已说单/双端就不要再问数据格式；已点名距离/方法就不要再问选型）。
+- 用户已明确【数据形态】+【分析目标】→ sufficient=true 直接抽取；次要选项未指定用常规默认。
 - 抽类型 ID 时严格用词表内 ID，词表没有的不要硬造；拿不准就归入 sufficient=false 并提问。
+
+示例（few-shot，仿此判定）：
+- 「我有单端原始数据做 PCoA」→ sufficient=true, available_inputs=["FASTQ_SINGLE"], goal_types=["PCOA_PLOT"]
+- 「我有双端原始数据做 PCoA」→ sufficient=true, available_inputs=["FASTQ_PAIR"], goal_types=["PCOA_PLOT"]
+- 「我有原始数据做 PCoA」（没说单/双端）→ sufficient=false, questions=["原始数据是单端还是双端测序？"]
+- 「我有相对丰度表做 LEfSe」→ sufficient=true, available_inputs=["RELATIVE_ABUNDANCE"], goal_types=["LEFSE_RESULT"]
 """
 
 
@@ -138,7 +157,7 @@ class IntentAgent:
                 headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
                 json={
                     "model": DASHSCOPE_MODEL_NAME,
-                    "temperature": 0.1,
+                    "temperature": 0,
                     "response_format": {"type": "json_object"},
                     "messages": messages,
                 },
@@ -189,3 +208,68 @@ class IntentAgent:
             "reasoning": reasoning,
             "fallback": False,
         }
+
+    # ─── 能力缺口判定（Phase 2）──────────────────────────────
+    @staticmethod
+    def classify_capability_gap(db: Session, domain_id: int, available: list[str], goals: list[str], content: str) -> dict:
+        """规划找不到路径时，判断这是不是"合理生信任务、只是平台缺工具"的缺口。
+
+        返回 {plausible: bool, missing_link: str}。LLM 不可用/失败 → plausible=False（保守，不误提议生成）。
+        """
+        if not DASHSCOPE_API_KEY:
+            return {"plausible": False, "missing_link": ""}
+
+        try:
+            domain = Domain.find(db, domain_id)
+            vocab = DomainService.get_type_vocab(db, domain_id)
+        except Exception as e:
+            logger.warning(f"[CapabilityGap] 读取领域失败: {e}")
+            return {"plausible": False, "missing_link": ""}
+
+        label = {t["type_id"]: t["label"] for t in vocab}
+        avail_desc = "、".join(label.get(t, t) for t in available) or "（未明确）"
+        goal_desc = "、".join(label.get(t, t) for t in goals) or "（未明确）"
+        capability = (domain.description if domain else "").strip() or (domain.name if domain else "生物信息分析")
+
+        system = (
+            "你是生物信息分析平台的【能力缺口判定器】。用户想做某个分析，但平台现有工具图里找不到"
+            "从【用户拥有的数据】到【想要的分析目标】的路径。请基于通用生物信息常识判断：这是不是一个"
+            "【合理的、符合生信常识的分析任务，只是平台恰好没有对应的现成工具】？\n"
+            "- plausible=true：数据→目标在生信上是成立的常见任务（例如单端扩增子去噪→PCoA、"
+            "宏基因组拼接→功能预测），只是平台没装这条链上的某个工具。\n"
+            "- plausible=false：数据与目标在生信上不搭配/自相矛盾，或根本不是生信任务"
+            "（例如『用 fastq 预测天气』『用物种组成表做基因组拼接』）。\n"
+            "只输出 JSON：{\"plausible\": true|false, \"missing_link\": \"<缺的环节，大白话，如 单端原始数据→ASV特征表/去噪>\"}"
+        )
+        user = (
+            f"【领域能力】{capability}\n"
+            f"【用户拥有的数据】{avail_desc}\n"
+            f"【想要的分析目标】{goal_desc}\n"
+            f"【用户原话】{content}\n\n"
+            f"请判定。"
+        )
+        try:
+            resp = httpx.post(
+                f"{DASHSCOPE_API_BASE}/chat/completions",
+                headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
+                json={
+                    "model": DASHSCOPE_MODEL_NAME,
+                    "temperature": 0,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                },
+                timeout=LLM_PARSER_TIMEOUT,
+            )
+            resp.raise_for_status()
+            data = json.loads(resp.json()["choices"][0]["message"]["content"])
+        except Exception as e:
+            logger.warning(f"[CapabilityGap] LLM 判定失败，保守判 not-plausible: {type(e).__name__}: {e}")
+            return {"plausible": False, "missing_link": ""}
+
+        plausible = bool(data.get("plausible", False))
+        missing = str(data.get("missing_link") or "").strip()
+        logger.info(f"[CapabilityGap] plausible={plausible} missing_link={missing!r}")
+        return {"plausible": plausible, "missing_link": missing}

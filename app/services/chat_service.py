@@ -230,6 +230,23 @@ class ChatService:
         candidates = PlannerService.plan_workflow(db, domain_id, available, goals)
 
         if not candidates:
+            gap = IntentAgent.classify_capability_gap(db, domain_id, available, goals, content)
+            if gap.get("plausible"):
+                input_names = ChatService._format_data_type_names(available)
+                goal_names = ChatService._format_data_type_names(goals)
+                missing = gap.get("missing_link") or "该环节"
+                return {
+                    "type": "clarification",
+                    "content": (
+                        f"根据你的数据（{input_names}）和目标（{goal_names}），平台目前没有现成流程"
+                        f"覆盖这条链（缺：{missing}）。\n"
+                        "不过我可以临时生成一个单步脚本来补上这个缺口，生成后就能接上既有流程继续。"
+                        "要我现在生成吗？"
+                    ),
+                    "data": json.dumps({"capability_gap": True, "missing_link": missing}, ensure_ascii=False),
+                    "available_inputs": json.dumps(available, ensure_ascii=False),
+                    "goal_types": json.dumps(goals, ensure_ascii=False),
+                }
             return {
                 "type": "clarification",
                 "content": (
@@ -362,7 +379,9 @@ class ChatService:
             .order_by(Message.id.asc())
             .all()
         )
-        history_dicts = ChatService._build_history_dicts(history)
+        # history 含刚 save 的当前用户消息；IntentAgent/澄清把它作为 content 单独传，
+        # 故历史里排除最后一条（当前消息），避免"两条连续 user 消息"让模型回裸消息的默认行为。
+        history_dicts = ChatService._build_history_dicts(history[:-1])
 
         # 期三+T4+T5：领域分流 + 相关性闸 + 多库消歧 + 早期重判。
         verdict = None
