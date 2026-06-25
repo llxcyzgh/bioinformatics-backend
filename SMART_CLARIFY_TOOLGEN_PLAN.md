@@ -25,6 +25,7 @@
 - 新脚本的**输入/输出必须能与既有脚本串成有效流水线**。
 - 新脚本要**自动录入脚本库**（即写入 `Script` 表 + 落盘 .sh + 进入工具图）。
 - **生成是通用常识驱动的，不预先设计具体工具**：系统不把"单端"或任何缺口映射到某个固定脚本。它用**通用生信常识提示词**理解意图、识别缺口；缺口确无现成工具时，由 LLM **当场决定**生成什么样的单步脚本来补。单端只是触发此通用机制的例子之一。计划里出现的 `amp-dada2-se` 一律按"LLM 可能产出的示例"理解，**不作预设规格**。
+- **意图识别必须智能、不查类型表（核心）**：意图理解与追问由**常识意图代理（IntentAgent）**统一完成——它从生信一般常识判断信息够不够、不够则**一次问全所有"不定就跑偏"的关键问题**（如"什么数据？单/双端？要不要去引物？"），**不靠关键词→预设问题的映射，也不靠类型菜单驱动提问**。类型词表只在"够意图"时作翻译目标（抽 available/goal ID），不当理解依据。
 
 ---
 
@@ -32,11 +33,15 @@
 
 ```
 用户：我有原始数据要做 PCoA 分析
-系统：听起来是扩增子分析。先确认一下：你的原始测序数据是【单端】还是【双端】？
-      （双端我有现成流程；单端目前没有现成的，但我可以临时给你生成一个。）
-用户：单端
-系统：单端目前平台没有现成流程。不过我可以现生成一个「单端 DADA2 去噪」脚本来补齐，
-      生成后就能接上后续的物种注释、多样性、PCoA。要我现在生成吗？
+系统：听起来是扩增子分析。为了给你定准流程，一次性确认几件事：
+      ① 你手上是什么数据？原始测序数据、ASV 表，还是已算好的距离矩阵？
+      ② 若是原始数据，是单端还是双端测序？
+      ③ 原始数据需要做引物切除吗？
+      （双端我有现成流程；单端目前没有现成的，但可以临时给你生成一个。）
+用户：单端原始数据，要去引物
+系统：[IntentAgent: sufficient] 单端目前平台没有现成流程。不过我可以现生成一个
+      「单端 DADA2 去噪」单步脚本来补齐，生成后就能接上物种注释、多样性、PCoA。
+      要我现在生成吗？
 用户：好
 系统：[生成中… 已生成 amp-dada2-se 并录入脚本库]
       好了。基于单端数据 → 单端DADA2去噪 → 物种注释 → 特征表 → 多样性 → PCoA，
@@ -45,6 +50,8 @@
 系统：[生成编排脚本 → 执行]
 ```
 
+> 系统第一轮的追问由 IntentAgent 凭生信常识**一次问全**（不是只问单/双端），避免挤牙膏式多轮打散用户意图。单端只是触发"现生成"的例子；任何意图不全的查询都走同一条常识追问。
+
 ---
 
 ## 2. 代码地图（grounding：现状 / 是否要改）
@@ -52,12 +59,11 @@
 | 环节 | 文件:位置 | 现状 | 本次是否改 |
 |---|---|---|---|
 | 领域分流 | `app/services/domain_classifier.py` | `原始数据+PCoA`→amplicon 已通 | 否 |
-| amplicon 解析 prompt | `pkg/amplicon/llm_parser.py:37` `SYSTEM_PROMPT` | 只列 `FASTQ_PAIR=双端`，无单端；规则让"原始数据"默认双端 | **改**（Phase 1）|
-| 动态 prompt 构造 | `pkg/amplicon/llm_parser.py:233` `build_system_prompt` | 非 amplicon 用；从 DB 词表构建 | 改（同 Phase 1，加单端规则）|
-| 解析结果校验 | `pkg/amplicon/llm_parser.py:353` `_validate` | 拒绝词表外类型 ID | 否（但要先加 `FASTQ_SINGLE` 进词表）|
-| 解析入口/amplicon 分支 | `app/services/chat_service.py:487` | `if domain.code=="amplicon"` 走硬编码 prompt | 否（Phase 1 只改 prompt 内容）|
-| 路由 4 CASE | `app/services/chat_service.py:232` `_route_decision` | CASE A/B/C/D；CASE C（知目标不知数据）会问数据；CASE D 低置信分支**仍写死 amplicon** | **改**（Phase 1：原始数据模糊→专门追问；修 CASE D 残留）|
-| 通用澄清 prompt | `pkg/amplicon/llm_parser.py:146` `CLARIFICATION_SYSTEM_PROMPT` | 静态、不感知具体模糊点 | **改/扩**（Phase 1：单/双端定向追问）|
+| **意图识别（新核心）** | `app/services/intent_agent.py`（新建）| 不存在 | **新建**（Phase 1：常识意图代理，取代下方旧解析器+预设追问）|
+| 旧解析器 | `pkg/amplicon/llm_parser.py` `parse_natural_language` + `app/services/parser_service.py` | LLM 抽类型ID + confidence | **降级为兜底**（IntentAgent 失败时回退，不再主导）|
+| 路由 | `app/services/chat_service.py:232` `_route_decision` | CASE A/B/C/D 预设追问 + CASE D 规划 | **改**（Phase 1：`sufficient?` → 问 `questions[]` / 规划；删预设追问分支，留规划分支与能力缺口）|
+| chat() 解析接线 | `app/services/chat_service.py:485` | amplicon/非amplicon 分调解析器 | **改**（Phase 1：统一走 IntentAgent）|
+| 类型词表 | `amplicon_tools.py` + `DataType` 表 | FASTQ_PAIR 等；已补 FASTQ_SINGLE | 用（IntentAgent 抽取 ID 时的翻译目标；FASTQ_SINGLE 保留，不当追问依据）|
 | 工具图加载 | `app/services/domain_service.py:42` `get_domain_tools` | 读 `Script.where(domain_id, verified=1, is_active=1)` + 内存缓存 | 用（新脚本注册后 `invalidate`）|
 | 规划器 | `app/services/planner_service.py:22` `plan_workflow` | BFS over DB 工具图；新工具进图后自动可用 | 用（Phase 4 重规划）|
 | 根输入推导 | `app/services/domain_service.py:108` `resolve_required_files` | 从工具链推上传需求 | 用（Phase 4 验证 FASTQ_SINGLE 上传）|
@@ -77,12 +83,24 @@
 
 本计划的核心原则：**系统不预先把"单端"或任何缺口映射到某个固定脚本**。补齐工具是 LLM 在运行时、基于**通用生物信息常识**现场决定的。单端只是触发此通用机制的例子之一；将来任何"合理但平台缺工具"的任务都走同一条路。
 
-处理分四层（上两层用通用常识、下两层落到平台类型系统）：
+处理分四层（第 1 层是智能意图识别，2-4 层落到平台类型系统）：
 
-1. **意图理解（通用常识）**：用通用生信常识提示词，把用户描述理解成一个可处理的生信任务（如"单端原始数据 → 想看样本 PCoA 聚类"），**不**依赖某域工具词表去猜数据类型。
-2. **缺口识别**：在当前域工具图上找路径；找不到 → 用通用常识判断是"合理任务、只是缺工具"还是"无意义"。
-3. **现场生成（落地到平台类型系统）**：LLM 决定**生成什么样的单步工具**来补这个缺口；提示词同时给出**数据类型词表 + 串链约束 + 执行模型约束**，让产物既能串进既有流水线、又能被编排器执行。
-4. **串链 + 执行**：注册 → 重规划 → 上传 → 执行。
+1. **意图识别——常识意图代理 IntentAgent（Phase 1 核心，取代旧解析器 + 预设追问）**：一次 LLM 调用，从**通用生信常识**判断信息是否足够确定一个可执行任务，三合一输出：
+   ```json
+   {
+     "sufficient": false,                                       // 够不够规划
+     "questions": ["什么数据？", "单端还是双端？", "要去引物吗？"],  // 不够时：一次问全关键问题
+     "available_inputs": [],                                    // 够时才填：类型 ID（仅作翻译）
+     "goal_types": [],                                          // 够时才填
+     "reasoning": "..."                                         // 常识依据
+   }
+   ```
+   - 够 → 抽 `available_inputs/goal_types`（类型 ID **仅作翻译**，理解过程不查表）；
+   - 不够 → `questions[]`：**一次抛出所有"不定就跑偏"的关键问题**，避免挤牙膏多轮；只问必需项，不穷举；
+   - 代理被喂：**平台能力大白话描述**（理解/提问用）+ 类型词表（抽取时翻译目标）。**理解与提问基于生信常识，不是机械查类型表**——所以换个模糊问法（如"帮我看样本能不能分开"）它也能给出恰当追问，而非只认"原始数据→单/双端"这一例。
+2. **缺口识别**（Phase 2）：IntentAgent 判 `sufficient=true` 后，在当前域工具图上找路径；找不到 → 用通用常识判断是"合理任务、只是缺工具"还是"无意义"。
+3. **现场生成（落地到平台类型系统）**（Phase 3）：LLM 决定**生成什么样的单步工具**来补这个缺口；提示词同时给出**数据类型词表 + 串链约束 + 执行模型约束**，让产物既能串进既有流水线、又能被编排器执行。
+4. **串链 + 执行**（Phase 4-5）：注册 → 重规划 → 上传 → 执行。
 
 > **执行模型约束（重要）**：现有编排器 `_gen_parallel_region`（`orchestrator.py:331-338`）对 cutadapt/flash/frags-qc 之外的 per-sample 工具会 `raise ValueError`。因此生成提示词要**引导 LLM 优先生成"非 per-sample / 吃 manifest / 一次性处理全部样本"形态的工具**（这种走通用 `_build_single_command` 分支，任意 tool_id 都能编排）。这是**约束 LLM 的形态偏好**，不是**替它选好工具**。
 
@@ -162,32 +180,31 @@ BFS 规划器应能自动找出此路径（Phase 4 验证）。
 
 ## 4. 分阶段实现
 
-### Phase 1：常理追问——原始数据单/双端不明时脱钩工具词表
+### Phase 1：常识意图代理（IntentAgent）——智能意图识别取代预设查表
 
-**目标**：`我有原始数据要做 PCoA` → 解析器**不默认双端**，留白 `available` + 标低置信 → 触发**定向追问**（问单/双端，且明示单端无现成流程）。追问文案来自**生信常识 + 当前模糊点**，不被工具词表菜单绑架。
+**目标**：用**一次 LLM 常识推理**取代"解析器抽类型ID + route_decision 按ID有无选预设追问模板"。任意模糊查询，代理都从生信常识判断够不够、不够则**一次问全**所有关键问题。这是本计划"智能"的落点——**意图识别不查类型表**。
 
 **改动**：
-1. **加单端类型**（3 处）：
-   - `app/models`/种子：在 amplicon 域 `DataType` 加 `FASTQ_SINGLE`（`is_uploadable=1, multiple=1, extensions=[.fastq,.fastq.gz,.fq.gz]`）
-   - `pkg/amplicon/amplicon_tools.py:123` `DATA_TYPE_NAMES` 加 `"FASTQ_SINGLE": "单端测序原始数据"`
-   - `pkg/amplicon/amplicon_tools.py:21` `DATA_TYPE_TO_FILE_REQUIREMENT` 加 `FASTQ_SINGLE` 条目
-2. **改 amplicon 硬编码 prompt**（`llm_parser.py:37` `SYSTEM_PROMPT`）：
-   - 输入类型清单加 `FASTQ_SINGLE：单端测序原始数据`
-   - 改识别规则：**"用户提原始数据/fastq 但未说单/双端 → `available_inputs` 返回 `[]`（不要默认双端），`confidence=low`，`scenario_description` 注明'原始数据单/双端不明'"**
-   - 用户明确说"单端"→ `["FASTQ_SINGLE"]`；明确"双端/R1R2"→ `["FASTQ_PAIR"]`
-3. **同步 `build_system_prompt`**（`llm_parser.py:233`）：把"原始数据未明单/双端→留白低置信"写进通用规则（非 amplicon 域将来也受益）。
-4. **`_route_decision` 加原始数据模糊分支**（`chat_service.py:232`）：
-   - 检测：`goals` 非空 + `available` 空 + 文本含原始数据信号（fastq/原始数据/下机/双端/单端）+ `confidence in (low, medium)`
-   - 命中 → 调用新方法 `_raw_data_layout_clarification(domain)` 生成定向追问（LLM，带领域 + "单端无现成流程"提示），**不走** 静态 CASE C 模板
-   - 否则维持现有 CASE C（`_domain_examples` 列表里现在会同时含 FASTQ_PAIR 与 FASTQ_SINGLE，自然提示二选一）
-5. **修 CASE D 低置信残留**（`chat_service.py:294`）：把写死的"双端 FASTQ 还是 ASV 表"改成 `_domain_examples` 动态填充（Fix A 漏掉的分支）。
+1. **新建 IntentAgent**（`app/services/intent_agent.py`）：
+   - 输入：用户原话 + 对话历史 + 领域能力大白话描述（`Domain.description` 等）+ 类型词表（`get_type_vocab`，仅作抽取翻译目标）。
+   - LLM（DashScope，`response_format=json_object`）输出：`{sufficient, questions[], available_inputs[], goal_types[], reasoning}`（schema 见 §3.1）。
+   - prompt 硬约束：① 理解与提问基于**生信一般常识**，不机械查表、不靠关键词→预设问题映射；② 不够时 `questions` 只列"不定就跑偏"的关键项、**一次问全**、不穷举能默认的参数；③ 够时才抽类型 ID，且必须用词表内 ID；④ 给正反例（"原始数据做PCoA"→不够、问数据形态/单双端/引物；"双端原始数据做PCoA"→够）。
+   - 失败兜底：LLM 不可用/解析失败 → 退回 `ParserService.parse`（旧解析器）+ 通用澄清，不崩。
+2. **`chat()` 接线**（`chat_service.py:485` 附近）：amplicon / 非 amplicon **统一**走 IntentAgent（取代原 `ParserService.parse` 分支）；返回 `{sufficient, questions, available_inputs, goal_types, confidence}`。
+3. **`_route_decision` 简化**（`chat_service.py:232`）：
+   - `sufficient=false` → 返回 `type="clarification"`，`content` = 把 `questions` 组合成一条友好的多问题消息（**取代 CASE A/B/C/C-raw/D-low 所有预设追问分支**）；
+   - `sufficient=true` → 用 `available_inputs/goal_types` 走规划（原 CASE D 流程：规划出路→方案；规划空→Phase 2 能力缺口）。
+4. **回退 Phase 1 旧预设实现**：删 `_is_raw_data_ambiguous` / `_raw_data_layout_clarification` / CASE C-raw 分支；`llm_parser.SYSTEM_PROMPT`/`build_system_prompt` 里"原始数据→留白低置信"那条预设规则删掉（判断改由代理）；`parser_service.generate_raw_data_layout_clarification` 删。**保留**：`FASTQ_SINGLE` 类型（词表合法类型，代理抽取可用 + 将来生成工具的输入）、`ensure_data_type` 迁移、CASE D 规划分支。
 
 **验证**：
-- 直接调 `ParserService.parse("我有原始数据要做PCoA分析", [], domain_types=None)` → 期望 `available_inputs==[]`、`confidence in (low,medium)`、`goal_types` 含 PCoA 相关。
-- 端到端 `chat()` → 追问文案含"单端/双端"且提到单端无现成流程；**不再**直接出 11 步双端流水线。
-- 回归：`我有双端原始数据做PCoA` → 仍走 `FASTQ_PAIR` → CASE D 正常规划。
+- IntentAgent 直调三组：`我有原始数据要做PCoA` → `sufficient=false` + `questions` 含数据形态/单双端/引物等多条；`我有双端原始数据做PCoA` → `sufficient=true` + `available=[FASTQ_PAIR]`；`帮我看看样本能不能分开`（换模糊问法）→ 也能给出**恰当的常识追问**（证明不是只认单端这例）。
+- 端到端 `chat()`：模糊查询一次问全、不再直接出双端流水线；双端照常规划（回归）。
+- 兜底：临时禁用 LLM key → 退回旧解析器 + 通用澄清，不崩。
 
-**风险**：解析器改"不默认双端"后，历史话术"我有原始数据想做扩增子全流程"也会变追问——这是**预期**（本来就该问），但要在文案里给出"全流程"快捷口子。
+**风险**：
+- 代理 `sufficient` 判断不稳：偶发"够判不够"（多问一轮，可接受）或"不够判够"（规划空→落 Phase 2 能力缺口，有兜底）。低温度 + 明确判定标准 + 正反例缓解。
+- 过问/漏问：prompt 限定"只问必需项" + 抽查 questions 条数/质量。
+- 成本/延迟：一次 LLM 调用承担原"解析+澄清"两步，净调用数不增；低温度控延迟。
 
 ---
 
@@ -322,7 +339,9 @@ class ToolGenesisService:
 | LLM 生成脚本不可运行 | few-shot 喂同族脚本 + 契约/语法校验 + 执行失败如实报错（不静默） |
 | `verified=1` 跳过人工校验 | `uploaded_by`=系统、`description` 标注「LLM 现生成」、落盘 `generated/` 与人工脚本隔离、可一键软删 |
 | 缺口误判（闲聊也被提议生成） | Phase 2 LLM 低温度 + 反例；Phase 3 契约校验兜底 |
-| 解析器"不默认双端"影响存量话术 | 文案给"全流程"快捷口子；回归测双端话术仍走 FASTQ_PAIR |
+| 解析器"不默认双端"影响存量话术 | （已作废：该预设方案被 IntentAgent 取代）|
+| IntentAgent `sufficient` 误判 | 低温度 + 正反例；"不够判够"有 Phase 2 能力缺口兜底，"够判不够"至多多问一轮 |
+| 过问/漏问（questions 质量） | prompt 限定只问必需项 + 抽查；多轮对话累积上下文减少重复问 |
 | 单端科学性（仅短读区成立） | 用户主动选单端即默认成立；可在追问文案里一句话提示 |
 
 **待用户拍板**（非阻塞，先按推荐做）：
@@ -335,7 +354,7 @@ class ToolGenesisService:
 
 每 Phase 用一次性 Python 脚本（放 `scripts/uploaded/` 或临时文件，gitignore）直调服务层，绕过 HTTP：
 
-- **P1**：`ParserService.parse` 三组话术（原始数据不明 / 明确单端 / 明确双端）断言；`chat()` 看追问文案。
+- **P1**：IntentAgent 直调三组话术（模糊→`sufficient=false`+多 questions / 双端→`sufficient=true`+FASTQ_PAIR / 换个模糊问法也能给出常识追问）；`chat()` 看一次问全；禁 key 兜底不崩。
 - **P2**：`plan_workflow(FASTQ_SINGLE, PCOA_PLOT)==[]` + `_classify_capability_gap==plausible`。
 - **P3**：`generate_and_register` → 查 .sh 落盘 + DB 行 + `get_domain_tools` 含新工具 + 第二次调用幂等。
 - **P4**：`plan_workflow` 出含 amp-dada2-se 路径 + `resolve_required_files` 推出 FASTQ_SINGLE。
@@ -351,7 +370,7 @@ class ToolGenesisService:
 - **多生成工具的编排**：首版单工具补齐。
 - **生成脚本的前端管理/审计 UI**：DB 行 + 软删即可，UI 后续。
 - **RBAC / 生成权限控制**：已知占位（见 known-placeholder-features），不在本计划。
-- **修改 amplicon 硬编码解析器分支结构**（`chat_service.py:487`）：只改 prompt 内容，不动 if/else 结构。
+- **不改领域分流**（`DomainClassifier`）：IntentAgent 在领域已钉之后运行，不接管"归哪个领域"的判断；领域间消歧/相关性闸仍走 T3-T5。
 
 ---
 
@@ -368,7 +387,7 @@ class ToolGenesisService:
 
 **P1 → P2 → P3 → P4 → P5**，每 Phase 可独立验证、独立提交。
 
-- P1+P2 把"常理追问 + 缺口识别"跑通（无需生成脚本即可演示智能追问）。
+- P1+P2 把"IntentAgent 智能追问 + 缺口识别"跑通（无需生成脚本即可演示智能意图识别）。
 - P3+P4 是核心（生成 + 注册 + 串链 + 重规划），跑通后即可演示"现生成工具并接入流水线"。
 - P5 让 demo 真能执行（到 PCoA），收尾。
 
