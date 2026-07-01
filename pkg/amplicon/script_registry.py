@@ -43,6 +43,16 @@ TOOL_SCRIPT_CALLS: dict[str, ScriptCallDef] = {
             OutputFileDef(data_type="FEATURE_SEQS", filename="featureSeqs.qza"),
         ],
     ),
+    "amp-pre-color": ScriptCallDef(
+        tool_id="amp-pre-color",
+        script_path="Amplicon/scripts/step0_pre_color.sh",
+        params=[
+            ParamDef(flag="-i", data_type="_GROUP_LIST"),
+        ],
+        outputs=[
+            OutputFileDef(data_type="GROUP_COLOR_LIST", filename="group_col.list"),
+        ],
+    ),
     "amp-cutadapt": ScriptCallDef(
         tool_id="amp-cutadapt",
         script_path="Amplicon/scripts/step1_cutadapt.sh",
@@ -155,6 +165,17 @@ TOOL_SCRIPT_CALLS: dict[str, ScriptCallDef] = {
             OutputFileDef(data_type="GROUP_EVEN_TABLE", filename="asv_table.group.even.txt"),
             OutputFileDef(data_type="GROUP_REL_ABUNDANCE", filename="Relative_group/"),
             OutputFileDef(data_type="EVEN_ABS_ABUNDANCE", filename="evenabs/"),
+        ],
+    ),
+    "amp-convert-table": ScriptCallDef(
+        tool_id="amp-convert-table",
+        script_path="Amplicon/scripts/step3_convert_table.sh",
+        params=[
+            ParamDef(flag="-i", data_type="FEATURE_TABLE"),
+            ParamDef(flag="-t", data_type="_CONFIG", default="FeatureTable[Frequency]", required=False),
+        ],
+        outputs=[
+            OutputFileDef(data_type="FEATURE_TABLE_QZA", filename="{basename}.qza"),
         ],
     ),
     # ─── 多样性分析 ───
@@ -456,17 +477,6 @@ TOOL_SCRIPT_CALLS: dict[str, ScriptCallDef] = {
             OutputFileDef(data_type="NMDS_PLOT", filename="NMDS.png"),
         ],
     ),
-    "amp-dca": ScriptCallDef(
-        tool_id="amp-dca",
-        script_path="Amplicon/scripts/step5_dca.sh",
-        params=[
-            ParamDef(flag="-t", data_type="ASV_TABLE_EVEN"),
-            ParamDef(flag="-g", data_type="_GROUP_LIST"),
-        ],
-        outputs=[
-            OutputFileDef(data_type="DCA_PLOT", filename="DCA.png"),
-        ],
-    ),
     # ─── 功能预测 ───
     "amp-funpre": ScriptCallDef(
         tool_id="amp-funpre",
@@ -482,6 +492,66 @@ TOOL_SCRIPT_CALLS: dict[str, ScriptCallDef] = {
         ],
     ),
 }
+
+# ─── v2 契约：每个脚本都强制 `-o <输出目录>` ──────────────────────────
+# v1 只有 import-fasta 真正实现 -o；v2 给所有脚本补齐（产物写进 -o 指定的目录，
+# 路径从脚本外部可知）。这里在模块加载时统一给每个 ScriptCallDef 注入一个
+# `-o _OUTPUT_DIR` ParamDef（默认值取 v2 文档的 <Tool>_Output 命名），于是：
+#   • 算法编排器遇到 _OUTPUT_DIR 会发 `-o ${<TOOL>_OUT}`，并把产物注册成
+#     `${<TOOL>_OUT}/<file>`，使下一步 -i 准确指向上一步的输出目录；
+#   • backfill_domains 会把它照常序列化进 DB 的 scripts.call_params，LLM 紧凑契约
+#     也能读到。
+# 注入到运行时对象上，规范化掉工具自带的旧 -o（如 krona 旧的 -o _CONFIG）。
+OUTPUT_DIR_DEFAULTS: dict[str, str] = {
+    "amp-import-fasta": "Import_Output",
+    "amp-pre-color": "Color_Output",
+    "amp-cutadapt": "Cutadapt_Output",
+    "amp-flash": "Flash_Output",
+    "amp-frags-qc": "Frags_QC_Output",
+    "amp-dada2": "DADA2_Output",
+    "amp-convert-table": "ConvertTable_Output",
+    "amp-taxonomy": "Taxonomy_Output",
+    "amp-phylogeny": "Phylogeny_Output",
+    "amp-feature-tables": "FeatureTables_Output",
+    "amp-table-stats": "TableStats_Output",
+    "amp-alpha-data": "AlphaData_Output",
+    "amp-beta-data": "BetaData_Output",
+    "amp-upgma": "UPGMA_Output",
+    "amp-top-species": "TopSpecies_Output",
+    "amp-genus-tree": "GenusTree_Output",
+    "amp-catecomp": "CateComp_Output",
+    "amp-lefse": "LEfSe_Output",
+    "amp-metastat": "MetaStat_Output",
+    "amp-randomforest": "RandomForest_Output",
+    "amp-simper": "Simper_Output",
+    "amp-ttest": "Ttest_Output",
+    "amp-krona": "Krona_Output",
+    "amp-network": "Network_Output",
+    "amp-network3d": "Network3D_Output",
+    "amp-otutree": "OTUTree_Output",
+    "amp-taxasummary": "TaxaSummary_Output",
+    "amp-taxasummary-group": "TaxaSummaryGroup_Output",
+    "amp-ternary": "Ternary_Output",
+    "amp-venn": "Venn_Output",
+    "amp-alpha-div": "AlphaDiv_Output",
+    "amp-alpha-rarefaction": "AlphaRarefaction_Output",
+    "amp-beta-div": "BetaDiv_Output",
+    "amp-pca": "PCA_Output",
+    "amp-pcoa": "PCoA_Output",
+    "amp-nmds": "NMDS_Output",
+    "amp-funpre": "FunPre_Output",
+}
+
+for _tid, _cd in list(TOOL_SCRIPT_CALLS.items()):
+    _cd.params = [p for p in _cd.params if p.flag != "-o"] + [
+        ParamDef(
+            flag="-o",
+            data_type="_OUTPUT_DIR",
+            default=OUTPUT_DIR_DEFAULTS.get(_tid, _tid[4:].title().replace("-", "_") + "_Output"),
+            required=True,
+        )
+    ]
+del _tid, _cd
 
 # 常用引物预设
 COMMON_PRIMERS = {

@@ -129,6 +129,9 @@ DATA_TYPE_NAMES: dict[str, str] = {
     "FEATURE_SEQS": "ASV代表序列(QZA)",
     "FEATURE_TABLE": "ASV丰度表(BIOM)",
     "FEATURE_FASTA": "ASV序列(FASTA)",
+    "FEATURE_TABLE_QZA": "QIIME2特征表(QZA)",
+    "GROUP_LIST": "样本分组文件(group.list)",
+    "GROUP_COLOR_LIST": "分组颜色配置",
     "TAXONOMY_ASSIGN": "物种分类注释结果",
     "ASV_TABLE": "ASV特征表(含分类)",
     "ASV_TABLE_EVEN": "均一化ASV表",
@@ -164,7 +167,6 @@ DATA_TYPE_NAMES: dict[str, str] = {
     "PCA_PLOT": "PCA排序图",
     "PCOA_PLOT": "PCoA排序图",
     "NMDS_PLOT": "NMDS排序图",
-    "DCA_PLOT": "DCA排序图",
     "FUNC_PREDICTION": "功能预测结果",
 }
 
@@ -179,6 +181,7 @@ def get_all_tools() -> list[ToolDef]:
     return [
         # 数据预处理
         _t("import-fasta", "FASTA导入QIIME2", ["FASTA_SEQ"], ["FEATURE_SEQS"], "数据预处理"),
+        _t("pre-color", "分组颜色配置生成", ["GROUP_LIST"], ["GROUP_COLOR_LIST"], "数据预处理"),
         _t("cutadapt", "Cutadapt引物切除", ["FASTQ_PAIR"], ["FASTQ_TRIMMED"], "数据预处理"),
         _t("flash", "FLASH双端拼接", ["FASTQ_TRIMMED"], ["FASTQ_MERGED"], "数据预处理"),
         # 质量控制
@@ -189,6 +192,7 @@ def get_all_tools() -> list[ToolDef]:
         _t("phylogeny", "系统发育树构建", ["FEATURE_SEQS"], ["ROOTED_TREE", "TREE_NWK"], "核心分析"),
         _t("feature-tables", "ASV特征表构建", ["FEATURE_TABLE", "TAXONOMY_ASSIGN"], ["ASV_TABLE"], "核心分析"),
         _t("table-stats", "ASV表均一化与丰度计算", ["ASV_TABLE"], ["ASV_TABLE_EVEN", "RELATIVE_ABUNDANCE", "GROUP_EVEN_TABLE", "GROUP_REL_ABUNDANCE", "EVEN_ABS_ABUNDANCE"], "核心分析"),
+        _t("convert-table", "特征表转QIIME2格式", ["FEATURE_TABLE"], ["FEATURE_TABLE_QZA"], "核心分析"),
         # 多样性分析
         _t("alpha-data", "Alpha多样性指数计算", ["ASV_TABLE_EVEN", "ROOTED_TREE"], ["ALPHA_INDEX"], "多样性分析"),
         _t("beta-data", "Beta多样性距离计算", ["ASV_TABLE_EVEN", "ROOTED_TREE"], ["DIST_MATRIX", "PCOA_COORDS"], "多样性分析"),
@@ -218,7 +222,6 @@ def get_all_tools() -> list[ToolDef]:
         _t("pca", "PCA主成分分析", ["RELATIVE_ABUNDANCE"], ["PCA_PLOT"], "排序分析"),
         _t("pcoa", "PCoA主坐标分析", ["PCOA_COORDS"], ["PCOA_PLOT"], "排序分析"),
         _t("nmds", "NMDS非度量多维标度", ["ASV_TABLE_EVEN"], ["NMDS_PLOT"], "排序分析"),
-        _t("dca", "DCA去趋势对应分析", ["ASV_TABLE_EVEN"], ["DCA_PLOT"], "排序分析"),
         # 功能预测
         _t("funpre", "PICRUSt2功能预测", ["FEATURE_TABLE", "FEATURE_FASTA"], ["FUNC_PREDICTION"], "功能预测"),
     ]

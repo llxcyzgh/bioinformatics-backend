@@ -254,12 +254,6 @@ plot_nmds.py \\
   --input {input_even_table} \\
   --output {output_dir}/nmds_plot.pdf
 """,
-    "amp-dca": """
-# === DCA去趋势对应分析 ===
-plot_dca.py \\
-  --input {input_even_table} \\
-  --output {output_dir}/dca_plot.pdf
-""",
     # 功能预测
     "amp-funpre": """
 # === PICRUSt2功能预测 ===

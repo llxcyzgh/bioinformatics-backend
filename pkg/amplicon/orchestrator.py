@@ -1,6 +1,13 @@
 """
 编排脚本生成器：根据工具链生成 bash 编排脚本。
 每个步骤调用独立的 sh 脚本，通过参数传递 input/output 文件。
+
+v2 契约：每个脚本都强制 `-o <Tool>_Output/`（输出目录）。产物写进该目录，
+本生成器据此
+  • 给每步发 `-o "<Tool>_Output"`；
+  • 把产物注册成 `<Tool>_Output>/<file>`，使下一步 -i 准确指向上一步的输出目录。
+per-sample 区与 manifest（DADA2）步骤也已通用化：不再按字面 tool_id 分发，
+而是按 ScriptCallDef 的 data_type / _MANIFEST 标记驱动。
 """
 
 import os
@@ -42,6 +49,22 @@ def _resolve_fastq_pair_uploads(file_mappings: list[dict], required_files: list[
             else:
                 samples[sample]["R2"] = stored
     return samples
+
+
+def _output_dir_default(call_def: ScriptCallDef) -> str:
+    """该工具 `-o _OUTPUT_DIR` ParamDef 的默认目录名（如 "DADA2_Output"）；没有则空串。"""
+    for p in call_def.params:
+        if p.data_type == "_OUTPUT_DIR":
+            return p.default or ""
+    return ""
+
+
+# 根 FASTQ 输入的 glob 兜底模式：data_type → (glob, fallback)
+# 保留 cutadapt 的稳健性——先按样本名 glob 找真实文件，找不到再用 fallback。
+_ROOT_INPUT_GLOBS = {
+    "FASTQ_R1": ("/shared/${SAMPLE}*.R1*", "/shared/${SAMPLE}.R1.fastq.gz"),
+    "FASTQ_R2": ("/shared/${SAMPLE}*.R2*", "/shared/${SAMPLE}.R2.fastq.gz"),
+}
 
 
 def generate_orchestrator_script(
@@ -147,7 +170,7 @@ def generate_orchestrator_script(
     lines.append("")
 
     # ─── 跟踪已生成的文件 ───
-    produced_files: dict[str, str] = {}  # data_type → file path
+    produced_files: dict[str, str] = {}  # data_type → file path（含输出目录前缀）
     # 初始化用户上传的根输入
     for rf in required_files:
         type_id = rf.get("typeId", "")
@@ -156,6 +179,7 @@ def generate_orchestrator_script(
 
     step_num = 0
     total_steps = len(tool_ids)
+    last_region_outputs: dict[str, str] | None = None  # per-sample 区产物模板，供 manifest 用
 
     i = 0
     while i < len(tool_ids):
@@ -179,27 +203,33 @@ def generate_orchestrator_script(
                     i += 1
                 else:
                     break
-            step_num = _gen_parallel_region(
+            step_num, last_region_outputs = _gen_parallel_region(
                 lines, region, call_defs, tool_names, samples, extra,
-                produced_files, step_num, total_steps, task_id, param_overrides,
+                step_num, total_steps, task_id, param_overrides,
             )
-            for tid in region:
-                _register_region_outputs(tid, call_defs, produced_files)
             continue
 
-        # ─── 非 per-sample（dada2 / 通用）: 单次执行，天然在并行区的 wait 之后 ───
+        # ─── 非 per-sample（dada2/manifest / 通用）: 单次执行，在并行区 wait 之后 ───
         step_num += 1
         tool_overrides = (param_overrides or {}).get(tool_id, {})
         _emit_step_header(lines, step_num, total_steps, tool_name, task_id)
-        if tool_id == "amp-dada2":
-            # DADA2 需要 manifest，先生成 manifest 再调用
-            _gen_dada2_step(lines, call_def, samples, produced_files, step_num, task_id, tool_overrides)
+        is_manifest = any(p.data_type == "_MANIFEST" for p in call_def.params)
+        if is_manifest:
+            # DADA2 等 manifest 步骤：先生成 manifest（吃 per-sample 区的 QC 产物）再调用
+            _gen_manifest_step(
+                lines, call_def, samples, last_region_outputs,
+                produced_files, extra, step_num, task_id, tool_overrides, tool_name,
+            )
         else:
             if task_id is not None:
                 lines.append(f'_log "INFO" "Step {step_num}/{total_steps}: {tool_name} 执行中"')
             lines.append(_build_single_command(call_def, produced_files, extra, tool_overrides))
+        # 注册产物（带输出目录前缀，使下游 -i 指向 <Tool>_Output/<file>）
+        out_dir = _output_dir_default(call_def)
         for out in call_def.outputs:
-            produced_files[out.data_type] = out.filename.replace("${sample}", "")
+            fname = out.filename
+            produced_files[out.data_type] = f"{out_dir}/{fname}" if out_dir else fname
+        last_region_outputs = None  # manifest 已消费，清空
         _emit_step_footer(lines, step_num, total_steps, tool_name, task_id)
         i += 1
 
@@ -220,69 +250,17 @@ def _config_flags(tool_overrides: dict, specs: list[tuple[str, str]]) -> list[st
     return out
 
 
-def _emit_call(lines: list[str], script_path: str, args: list[str]) -> None:
-    """输出 `bash <path> arg1 ... `，反斜杠续行（首行 2 空格缩进，续行 4 空格）。"""
+def _emit_call(lines: list[str], script_path: str, args: list[str], indent: str = "  ") -> None:
+    """输出 `bash <path> arg1 ... `，反斜杠续行（首行 indent 缩进，续行再多 2 空格）。"""
+    cont = indent + "  "
     if not args:
-        lines.append(f'  bash ${{AMPLICON_ROOT}}/{script_path}')
+        lines.append(f'{indent}bash ${{AMPLICON_ROOT}}/{script_path}')
         return
-    lines.append(f'  bash ${{AMPLICON_ROOT}}/{script_path} \\')
+    lines.append(f'{indent}bash ${{AMPLICON_ROOT}}/{script_path} \\')
     last = len(args) - 1
     for i, a in enumerate(args):
         sep = " \\" if i < last else ""
-        lines.append(f'    {a}{sep}')
-
-
-def _gen_cutadapt_body(lines, call_def, extra: dict, tool_overrides: dict,
-                       step_num: int, task_id: int | None, indent: str = ""):
-    """单个样本的 Cutadapt 片段（不含 for/done/SAMPLES，供并行区子shell调用）。"""
-    primer_f = extra.get("primer_f", COMMON_PRIMERS["16S V3-V4"]["f"])
-    primer_r = extra.get("primer_r", COMMON_PRIMERS["16S V3-V4"]["r"])
-    lines.append(f'{indent}R1_FILE="/shared/${{SAMPLE}}.R1.fastq.gz"')
-    lines.append(f'{indent}R2_FILE="/shared/${{SAMPLE}}.R2.fastq.gz"')
-    lines.append(f'{indent}for f in /shared/${{SAMPLE}}*.R1*; do R1_FILE="$f"; break; done')
-    lines.append(f'{indent}for f in /shared/${{SAMPLE}}*.R2*; do R2_FILE="$f"; break; done')
-    if task_id is not None:
-        lines.append(f'{indent}_log "INFO" "Step {step_num}: cutadapt ${{SAMPLE}}"')
-    args = [
-        '-r1 "${R1_FILE}"',
-        '-r2 "${R2_FILE}"',
-        f'-f "{primer_f}"',
-        f'-r "{primer_r}"',
-    ]
-    args += _config_flags(tool_overrides, [("-e", "0.1"), ("-l", "100"), ("-n", "1")])
-    _emit_call(lines, call_def.script_path, args)
-
-
-def _gen_flash_body(lines, call_def, tool_overrides: dict,
-                    step_num: int, task_id: int | None, indent: str = ""):
-    """单个样本的 FLASH 片段。"""
-    lines.append(f'{indent}TRIMMED_R1="${{SAMPLE}}.cutadapt.R1.fastq.gz"')
-    lines.append(f'{indent}TRIMMED_R2="${{SAMPLE}}.cutadapt.R2.fastq.gz"')
-    if task_id is not None:
-        lines.append(f'{indent}_log "INFO" "Step {step_num}: FLASH ${{SAMPLE}}"')
-    args = ['-1 "${TRIMMED_R1}"', '-2 "${TRIMMED_R2}"']
-    args += _config_flags(tool_overrides, [("-m", "10"), ("-M", "250"), ("-x", "0.1"), ("-t", "1")])
-    _emit_call(lines, call_def.script_path, args)
-
-
-def _gen_frags_qc_body(lines, call_def, tool_overrides: dict,
-                       step_num: int, task_id: int | None, indent: str = ""):
-    """单个样本的 Frags QC 片段。"""
-    lines.append(f'{indent}MERGED="${{SAMPLE}}.out.extendedFrags.fastq"')
-    if task_id is not None:
-        lines.append(f'{indent}_log "INFO" "Step {step_num}: Frags QC ${{SAMPLE}}"')
-    args = ['-i "${MERGED}"']
-    args += _config_flags(tool_overrides, [("-q", "19"), ("-u", "15"), ("-d", "")])
-    _emit_call(lines, call_def.script_path, args)
-
-
-def _register_region_outputs(tool_id: str, call_defs: dict, produced: dict) -> None:
-    """注册 per-sample 区工具输出（装饰性：dada2 直接读 samples，不读 produced）。"""
-    cd = call_defs.get(tool_id)
-    if not cd:
-        return
-    for out in cd.outputs:
-        produced[out.data_type] = out.filename.replace("${sample}", "")
+        lines.append(f'{cont}{a}{sep}')
 
 
 def _emit_step_header(lines, step_num: int, total_steps: int, tool_name: str, task_id) -> None:
@@ -302,12 +280,13 @@ def _emit_step_footer(lines, step_num: int, total_steps: int, tool_name: str, ta
 
 
 def _gen_parallel_region(lines, region_ids: list[str], call_defs: dict, tool_names: dict,
-                         samples: dict, extra: dict, produced: dict,
-                         step_num: int, total_steps: int, task_id, param_overrides) -> int:
+                         samples: dict, extra: dict,
+                         step_num: int, total_steps: int, task_id, param_overrides) -> tuple[int, dict[str, str]]:
     """把连续的 per-sample 工具合并成一个跨样本并行区。
 
-    每个样本在后台子shell内按序跑完整条链（cutadapt→flash→frags_qc，文件名依赖决定顺序），
-    跨样本并行；显式 wait 屏障后再由调用方跑 dada2 等汇合步骤。返回新的 step_num。
+    每个样本在后台子shell内按序跑完整条链（文件名依赖决定顺序），跨样本并行；
+    显式 wait 屏障后再由调用方跑 manifest 等汇合步骤。
+    返回 (新的 step_num, 该区最终产物模板 dict)。
     """
     start = step_num + 1
     end = step_num + len(region_ids)
@@ -324,18 +303,18 @@ def _gen_parallel_region(lines, region_ids: list[str], call_defs: dict, tool_nam
     lines.append("_JOB_I=0")
     lines.append('for SAMPLE in "${SAMPLES[@]}"; do')
     lines.append("  (")
+    # 区内产物模板：data_type → "${sample}/..." 模板（首工具的根输入走 _ROOT_INPUT_GLOBS）
+    produced_sample: dict[str, str] = {}
     for idx, tid in enumerate(region_ids):
         cd = call_defs.get(tid)
+        if not cd:
+            lines.append(f"    # ⚠ 未找到 {tid} 的脚本注册，跳过")
+            continue
         ov = (param_overrides or {}).get(tid, {})
         s = step_num + idx + 1
-        if tid == "amp-cutadapt":
-            _gen_cutadapt_body(lines, cd, extra, ov, s, task_id, indent="    ")
-        elif tid == "amp-flash":
-            _gen_flash_body(lines, cd, ov, s, task_id, indent="    ")
-        elif tid == "amp-frags-qc":
-            _gen_frags_qc_body(lines, cd, ov, s, task_id, indent="    ")
-        else:
-            raise ValueError(f"per_sample 工具 {tid} 没有对应 body 生成器")
+        _gen_per_sample_body(
+            lines, cd, produced_sample, tool_names.get(tid, tid), ov, extra, s, task_id, indent="    "
+        )
     lines.append("  ) &")
     lines.append("  _JOB_I=$((_JOB_I+1))")
     lines.append('  if [ $((_JOB_I % MAX_JOBS)) -eq 0 ]; then wait || { echo "[FATAL] per-sample step failed" >&2; exit 1; }; fi')
@@ -346,43 +325,112 @@ def _gen_parallel_region(lines, region_ids: list[str], call_defs: dict, tool_nam
     else:
         lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Steps {start}-{end} 完成"')
     lines.append("")
-    return end
+    return end, produced_sample
 
 
-def _gen_dada2_step(
-    lines: list[str], call_def, samples: dict, produced: dict,
-    step_num: int, task_id: int | None, tool_overrides: dict,
-):
-    """生成 DADA2 步骤，包括 manifest 生成。"""
+def _gen_per_sample_body(lines, call_def: ScriptCallDef, produced_sample: dict[str, str],
+                         tool_name: str, tool_overrides: dict, extra: dict,
+                         step_num: int, task_id, indent: str = "") -> None:
+    """单个样本的通用调用片段（不含 for/done/SAMPLES，供并行区子shell调用）。
+
+    按 ScriptCallDef 解析参数：
+      • `_OUTPUT_DIR` → `-o "<Tool>_Output"`；
+      • `_CONFIG` → override 优先，否则 default；
+      • `_PRIMER_F/_PRIMER_R` → 来自 extra；
+      • 其它 `_*` → default 或跳过；
+      • 普通数据类型 → 从 produced_sample 取模板，${sample}→${SAMPLE}；
+      • 根 FASTQ 输入（FASTQ_R1/R2）→ glob 兜底（保留稳健性）。
+    调用后把本工具 outputs 注册进 produced_sample（带输出目录前缀）。
+    """
+    out_dir = _output_dir_default(call_def)
+    args: list[str] = []
+    pre: list[str] = []  # shell 兜底变量定义（glob 等），需在调用前输出
+    for param in call_def.params:
+        dt = param.data_type
+        if dt == "_OUTPUT_DIR":
+            if out_dir:
+                args.append(f'{param.flag} "{out_dir}"')
+            continue
+        if dt == "_CONFIG":
+            value = tool_overrides.get(param.flag, param.default)
+            if value:
+                args.append(f"{param.flag} {value}")
+            continue
+        if dt == "_PRIMER_F":
+            primer_f = extra.get("primer_f", COMMON_PRIMERS["16S V3-V4"]["f"])
+            args.append(f'{param.flag} "{primer_f}"')
+            continue
+        if dt == "_PRIMER_R":
+            primer_r = extra.get("primer_r", COMMON_PRIMERS["16S V3-V4"]["r"])
+            args.append(f'{param.flag} "{primer_r}"')
+            continue
+        if dt.startswith("_"):
+            # _MANIFEST/_METADATA/_GROUP_LIST 等在 per-sample 步骤里通常不出现；有 default 就发
+            if param.default:
+                args.append(f"{param.flag} {param.default}")
+            continue
+        # 普通数据类型 → 区内产物模板
+        if dt in produced_sample:
+            tmpl = produced_sample[dt].replace("${sample}", "${SAMPLE}")
+            args.append(f'{param.flag} "{tmpl}"')
+        elif dt in _ROOT_INPUT_GLOBS:
+            glob_pat, fallback = _ROOT_INPUT_GLOBS[dt]
+            var = f"{dt}_FILE"  # FASTQ_R1_FILE
+            pre.append(f'{indent}{var}="{fallback}"')
+            pre.append(f'{indent}for f in {glob_pat}; do {var}="$f"; break; done')
+            args.append(f'{param.flag} "${{{var}}}"')
+        elif param.required:
+            args.append(f'{param.flag} "<{dt}>"')
+        # optional 且无来源 → 跳过
+    if task_id is not None:
+        pre.append(f'{indent}_log "INFO" "Step {step_num}: {tool_name} ${{SAMPLE}}"')
+    lines.extend(pre)
+    _emit_call(lines, call_def.script_path, args, indent=indent or "  ")
+    # 注册产物到 produced_sample（带输出目录前缀，模板保留 ${sample}）
+    for out in call_def.outputs:
+        produced_sample[out.data_type] = f"{out_dir}/{out.filename}" if out_dir else out.filename
+
+
+def _gen_manifest_step(
+    lines: list[str], call_def: ScriptCallDef, samples: dict,
+    last_region_outputs: dict[str, str] | None, produced: dict, extra: dict,
+    step_num: int, task_id, tool_overrides: dict, tool_name: str,
+) -> None:
+    """manifest 步骤（如 DADA2）：按 per-sample 区的 QC 产物生成 manifest.tsv，再调用工具。
+
+    QC 文件模板取自 last_region_outputs["FASTQ_QC"]（形如 "Frags_QC_Output/${sample}.fastq"），
+    逐样本把 ${sample} 替换成样本名。工具命令本身复用 _build_single_command（已带 -o <Tool>_Output）。
+    """
     lines.append("# 生成 manifest 文件")
     lines.append('echo -e "sample-id\\tabsolute-filepath" > manifest.tsv')
+    qc_tmpl = (last_region_outputs or {}).get("FASTQ_QC", "${sample}.fastq")
     if samples:
         for sample_name in samples:
-            # 使用 QC 后的 fastq 文件
-            lines.append(f'echo -e "{sample_name}\\t$(pwd)/{sample_name}.fastq" >> manifest.tsv')
+            qc_file = qc_tmpl.replace("${sample}", sample_name)
+            lines.append(f'echo -e "{sample_name}\\t$(pwd)/{qc_file}" >> manifest.tsv')
     else:
         lines.append("# ⚠ 未检测到样本，需手动编辑 manifest.tsv")
     lines.append("")
     if task_id is not None:
-        lines.append(f'_log "INFO" "Step {step_num}: DADA2 开始"')
-    args = ['-m manifest.tsv']
-    args += _config_flags(tool_overrides, [("-t", "0"), ("-n", "12"), ("-a", "1")])
-    _emit_call(lines, call_def.script_path, args)
+        lines.append(f'_log "INFO" "Step {step_num}: {tool_name} 开始"')
+    lines.append(_build_single_command(call_def, produced, extra, tool_overrides))
     if task_id is not None:
-        lines.append(f'_log "INFO" "Step {step_num}: DADA2 完成"')
-
-    produced["FEATURE_SEQS"] = "featureSeqs.qza"
-    produced["FEATURE_TABLE"] = "featureTable.biom"
-    produced["FEATURE_FASTA"] = "feature.fasta"
+        lines.append(f'_log "INFO" "Step {step_num}: {tool_name} 完成"')
 
 
 def _build_single_command(call_def, produced: dict, extra: dict, tool_overrides: dict | None = None) -> str:
-    """为通用工具构建单条 bash 命令。"""
+    """为通用工具构建单条 bash 命令（含 -o <Tool>_Output）。"""
     tool_overrides = tool_overrides or {}
     cmd_parts = [f"bash ${{AMPLICON_ROOT}}/{call_def.script_path}"]
 
     for param in call_def.params:
         dt = param.data_type
+
+        if dt == "_OUTPUT_DIR":
+            out_dir = param.default or ""
+            if out_dir:
+                cmd_parts.append(f'{param.flag} "{out_dir}"')
+            continue
 
         if dt == "_CONFIG":
             # 用户在节点上改的值优先（已通过 confirm_upload 正则校验），否则用 .md 默认
@@ -424,7 +472,7 @@ def _build_single_command(call_def, produced: dict, extra: dict, tool_overrides:
                 cmd_parts.append(f'{param.flag} {param.default}')
             continue
 
-        # 普通数据类型 → 从 produced_files 中查找
+        # 普通数据类型 → 从 produced_files 中查找（已带 <Tool>_Output/ 前缀）
         if dt in produced:
             cmd_parts.append(f'{param.flag} "{produced[dt]}"')
         elif param.required:

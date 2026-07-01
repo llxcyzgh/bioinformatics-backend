@@ -436,6 +436,7 @@ def seed_scripts():
             }
             tool_file_map = {
                 "amp-import-fasta": "Amplicon/scripts/step0_import_fasta.sh",
+                "amp-pre-color": "Amplicon/scripts/step0_pre_color.sh",
                 "amp-cutadapt": "Amplicon/scripts/step1_cutadapt.sh",
                 "amp-flash": "Amplicon/scripts/step1_flash.sh",
                 "amp-frags-qc": "Amplicon/scripts/step2_frags_qc.sh",
@@ -444,6 +445,7 @@ def seed_scripts():
                 "amp-phylogeny": "Amplicon/scripts/step3_phylogeny.sh",
                 "amp-feature-tables": "Amplicon/scripts/step3_feature_tables.sh",
                 "amp-table-stats": "Amplicon/scripts/step3_table_stats.sh",
+                "amp-convert-table": "Amplicon/scripts/step3_convert_table.sh",
                 "amp-alpha-data": "Amplicon/scripts/step3_alpha_data.sh",
                 "amp-beta-data": "Amplicon/scripts/step3_beta_data.sh",
                 "amp-upgma": "Amplicon/scripts/step3_upgma.sh",
@@ -467,7 +469,6 @@ def seed_scripts():
                 "amp-alpha-div": "Amplicon/scripts/step5_alpha_div.sh",
                 "amp-alpha-rarefaction": "Amplicon/scripts/step5_alpha_rarefaction.sh",
                 "amp-beta-div": "Amplicon/scripts/step5_beta_div.sh",
-                "amp-dca": "Amplicon/scripts/step5_dca.sh",
                 "amp-nmds": "Amplicon/scripts/step5_nmds.sh",
                 "amp-pca": "Amplicon/scripts/step5_pca.sh",
                 "amp-pcoa": "Amplicon/scripts/step5_pcoa.sh",
@@ -847,7 +848,7 @@ def seed_stats_domain():
                 description=(
                     "基于已有丰度表/特征表的下游多变量统计与排序分析：差异检验"
                     "（随机森林、LEfSe、T检验/Wilcoxon、MetaStat、SIMPER、Anosim）与"
-                    "降维排序（PCA、PCoA、NMDS、DCA）。用户自带已处理的相对丰度表或 ASV 表，"
+                    "降维排序（PCA、PCoA、NMDS）。用户自带已处理的相对丰度表或 ASV 表，"
                     "无需从原始测序数据开始。"
                 ),
                 is_active=1,
@@ -896,7 +897,7 @@ def seed_stats_domain():
         clone_plan: dict[str, list[str]] = {
             "统计检验": ["amp-randomforest", "amp-lefse", "amp-ttest", "amp-simper",
                        "amp-metastat", "amp-catecomp"],
-            "排序分析": ["amp-pca", "amp-pcoa", "amp-nmds", "amp-dca"],
+            "排序分析": ["amp-pca", "amp-pcoa", "amp-nmds"],
         }
         amplicon = session.query(Domain).filter(Domain.code == "amplicon").first()
         if not amplicon:
@@ -952,7 +953,7 @@ def seed_stats_domain():
                        "DIST_MATRIX", "EVEN_ABS_ABUNDANCE"]
         goal_types = ["RF_RESULT", "LEFSE_RESULT", "TTEST_RESULT", "SIMPER_RESULT",
                       "METASTAT_RESULT", "CATECOMP_RESULT", "PCA_PLOT", "PCOA_PLOT",
-                      "NMDS_PLOT", "DCA_PLOT"]
+                      "NMDS_PLOT"]
         added = 0
         for tid in input_types + goal_types:
             if session.query(DataType).filter(

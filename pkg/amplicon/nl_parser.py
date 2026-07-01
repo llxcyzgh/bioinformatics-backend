@@ -93,9 +93,7 @@ def parse_natural_language(user_input: str) -> dict:
         goal_types.append("PCOA_PLOT")
     if _match(t, ["nmds"]):
         goal_types.append("NMDS_PLOT")
-    if _match(t, ["dca"]):
-        goal_types.append("DCA_PLOT")
-    if _match(t, ["排序", "ordination", "降维"]) and not _match(t, ["pca", "pcoa", "nmds", "dca"]):
+    if _match(t, ["排序", "ordination", "降维"]) and not _match(t, ["pca", "pcoa", "nmds"]):
         goal_types += ["PCA_PLOT", "PCOA_PLOT", "NMDS_PLOT"]
 
     if _match(t, ["功能预测", "picrust", "代谢通路", "kegg"]):

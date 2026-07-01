@@ -101,7 +101,6 @@ SYSTEM_PROMPT = """\
 - PCA_PLOT：PCA排序图
 - PCOA_PLOT：PCoA排序图
 - NMDS_PLOT：NMDS非度量多维标度
-- DCA_PLOT：DCA去趋势对应分析
 
 #### 功能预测
 - FUNC_PREDICTION：功能预测结果

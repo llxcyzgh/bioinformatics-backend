@@ -661,6 +661,56 @@ class ChatService:
             return None
 
     @staticmethod
+    def _build_tool_contract(tid: str, call_def, tool_name: str) -> str:
+        """从 DB ScriptCallDef 构造紧凑调用契约（几行），替代整篇 .md 喂给 LLM。
+
+        给出：脚本路径、必含的 -o 输出目录、参数（flag + 取值/消费的上游类型）、
+        产物文件名（相对 -o 目录）。让 LLM 拿到确定性的文件名，无需 rename/symlink 兜底，
+        也无需照搬 .md 散文，从而大幅精简输出。
+        """
+        lines = [f"### {tool_name} (tool_id={tid})"]
+        lines.append(f"调用: bash ${{AMPLICON_ROOT}}/{call_def.script_path}")
+        out_dir = ""
+        for p in call_def.params:
+            if p.data_type == "_OUTPUT_DIR":
+                out_dir = p.default or ""
+                break
+        if out_dir:
+            lines.append(f"必含: -o {out_dir}   （产物写入该目录）")
+        pparts = []
+        for p in call_def.params:
+            dt = p.data_type
+            if dt == "_OUTPUT_DIR":
+                continue
+            if dt == "_MANIFEST":
+                pparts.append(f"{p.flag} manifest.tsv")
+            elif dt == "_CONFIG":
+                pparts.append(f"{p.flag} {p.default}" if p.default else f"{p.flag} <值>")
+            elif dt == "_PRIMER_F":
+                pparts.append(f"{p.flag} <正向引物>")
+            elif dt == "_PRIMER_R":
+                pparts.append(f"{p.flag} <反向引物>")
+            elif dt == "_METADATA":
+                pparts.append(f"{p.flag} <metadata文件>")
+            elif dt == "_GROUP_LIST":
+                pparts.append(f"{p.flag} group.list")
+            elif dt.startswith("_"):
+                if p.default:
+                    pparts.append(f"{p.flag} {p.default}")
+            else:
+                # 普通数据类型：标明消费的上游产物类型，LLM 据此衔接上一步 -o 目录里的文件
+                pparts.append(f"{p.flag} <{dt}>")
+        if pparts:
+            lines.append("参数: " + "  ".join(pparts))
+        if call_def.outputs:
+            outs = ", ".join(f"{o.data_type}={o.filename}" for o in call_def.outputs)
+            where = f"（相对 {out_dir}/）" if out_dir else ""
+            lines.append(f"产物{where}: {outs}")
+        if getattr(call_def, "per_sample", False):
+            lines.append("注: per-sample，按样本循环；filename 里的 ${sample} 用样本变量替换")
+        return "\n".join(lines)
+
+    @staticmethod
     def _generate_orchestrator_with_llm(
         tool_ids: list[str],
         tool_chain: list[dict],
@@ -669,6 +719,7 @@ class ChatService:
         extra_params: dict | None = None,
         task_id: int | None = None,
         param_overrides: dict | None = None,
+        call_defs: dict | None = None,
     ) -> str | None:
         """根据工具链参考文档，用 LLM 生成完整 bash 编排脚本。"""
         if not tool_ids:
@@ -681,20 +732,29 @@ class ChatService:
 
             extra = extra_params or {}
 
-            # ─── 加载每个工具的参考文档 ───
+            # ─── 构造每个工具的【紧凑调用契约】（从 DB ScriptCallDef，替代整篇 .md）───
+            # v2 改造：不再把整篇 reference .md 原文喂给 LLM（啰嗦、模型照搬散文、靠 rename 兜底），
+            # 而是给结构化契约——脚本路径、必含的 -o 输出目录、参数、产物文件名（相对 -o）。
+            # 文件名由此确定性，LLM 无需 rename/symlink 兜底，输出大幅精简。
+            cd_map = call_defs or {}
             md_sections = []
             for tid in tool_ids:
-                md = ChatService._load_tool_reference_md(tid)
                 tool_info = next((t for t in tool_chain if isinstance(t, dict) and t.get("id") == tid), {})
                 tool_name = tool_info.get("name") or tool_info.get("label") or tid
-                if md:
-                    md_sections.append(f"## 工具: {tool_name} (tool_id={tid})\n{md}\n")
+                cd = cd_map.get(tid)
+                if cd:
+                    md_sections.append(ChatService._build_tool_contract(tid, cd, tool_name))
                 else:
-                    md_sections.append(
-                        f"## 工具: {tool_name} (tool_id={tid})\n"
-                        f"未找到参考文档。输入: {tool_info.get('inputs', [])}\n"
-                        f"输出: {tool_info.get('outputs', [])}\n"
-                    )
+                    # 回退：DB 无契约时读 .md 原文（极少发生）
+                    md = ChatService._load_tool_reference_md(tid)
+                    if md:
+                        md_sections.append(f"## 工具: {tool_name} (tool_id={tid})\n{md}\n")
+                    else:
+                        md_sections.append(
+                            f"### {tool_name} (tool_id={tid})\n"
+                            f"输入类型: {tool_info.get('inputs', [])}\n"
+                            f"输出类型: {tool_info.get('outputs', [])}\n"
+                        )
             docs_content = "\n".join(md_sections)
 
             # ─── 构造工具链摘要 ───
@@ -739,38 +799,36 @@ class ChatService:
                     ovr_lines.append(f"- {tid}: {flags}")
             param_overrides_desc = "\n".join(ovr_lines) or "无"
 
-            system_prompt = """你是一个生物信息分析流程编排专家。请根据用户选择的分析工具链、每个工具的参考文档、用户上传的文件信息，生成一个完整的可执行 bash 脚本。
+            system_prompt = """你是一个生物信息分析流程编排专家。根据下方【工具调用契约】（已结构化给出每个工具的脚本路径、必含的 -o 输出目录、参数、产物文件名）和上传文件信息，生成一个完整可执行的 bash 脚本。
+
+【v2 核心契约，必须遵守】
+- 每个工具都强制 `-o <Tool>_Output`：产物写入该目录。
+- 下一步的输入必须指向上一步 `-o` 目录里的具体文件（如 `-i DADA2_Output/featureSeqs.qza`），不要假设产物在当前目录。
+- 产物文件名已在契约中确定——直接用契约给的文件名，【不要】重命名、不要 cp、不要 symlink 去对齐名字。
 
 要求：
-1. 以 `#!/bin/bash` 开头，使用 `set -euo pipefail`。
-2. 顶部 export：`export PATH=/opt/conda/bin:$PATH` 和 `export AMPLICON_ROOT=/opt/amplicon`。
-3. 所有步骤按工具链顺序执行，使用 `bash ${AMPLICON_ROOT}/scripts/stepX_*.sh` 调用（具体脚本路径参考每个工具的参考文档）。
-4. 上一步的输出必须作为下一步的输入。如果文件名不匹配，必须显式重命名或创建 symlink，不能假设文件名自动一致。
-5. 用户上传文件都在 `/shared/` 目录下，脚本中使用 `/shared/<stored_name>` 引用。
-6. 对于多样本工具（如 cutadapt、flash、frags_qc），使用 for 循环按样本处理。
-7. DADA2 需要先生成 manifest.tsv 再执行。
-8. 元数据文件（如果存在）通过 `-metadata` 或参考文档中的参数传入。
-9. 引物序列已提供，请按参考文档要求传入。
-10. 每步输出进度日志：`echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Step X/N] 正在执行: <tool_name>"`。
-11. 只输出 bash 脚本内容，不要解释、不要 markdown 代码块。
-12. 文件类型和文件名必须严格与参考文档一致，不能搞错。
-13. 若提供了"用户修改的参数"，必须按其指定的值调用对应 flag，覆盖参考文档中的默认值。
-14. 多样本并行结构（关键，严格遵守）：cutadapt/flash/frags_qc 等 per-sample 步骤必须融合进【唯一一个】按样本并行的区域——每个样本在同一个后台子shell `( ... ) &` 内【顺序】跑完全部 per-sample 步骤，而不是为每个工具各开一个 for 循环。请严格照如下结构编写（步骤数随工具链而定，可多可少，但必须在一个 `( ) &` 内按序排列）：
+1. `#!/bin/bash` 开头，`set -euo pipefail`。
+2. 顶部 export `PATH=/opt/conda/bin:$PATH` 和 `AMPLICON_ROOT=/opt/amplicon`。
+3. 按工具链顺序，每步 `bash ${AMPLICON_ROOT}/<契约给出的脚本路径>`，必含 `-o <Tool>_Output`。
+4. 上传文件在 `/shared/`，用 `/shared/<stored_name>` 引用。
+5. per-sample 工具（契约标注 per-sample）：融合进【唯一一个】按样本并行的区域，每个样本在同一个 `( ... ) &` 子shell 内顺序跑完所有 per-sample 步骤；产物文件名里的 ${sample} 用当前样本变量替换。结构：
    SAMPLES=("a" "b")
    MAX_JOBS="${BIOFLOW_MAX_PARALLEL:-4}"
    _JOB_I=0
    for SAMPLE in "${SAMPLES[@]}"; do
      (
-       bash ${AMPLICON_ROOT}/scripts/step1_cutadapt.sh ...   # 本样本 cutadapt
-       bash ${AMPLICON_ROOT}/scripts/step1_flash.sh ...      # 本样本 flash（吃 cutadapt 输出）
-       bash ${AMPLICON_ROOT}/scripts/step2_frags_qc.sh ...   # 本样本 frags_qc（吃 flash 输出）
+       bash .../step1_cutadapt.sh -r1 ... -o Cutadapt_Output
+       bash .../step1_flash.sh -1 Cutadapt_Output/${SAMPLE}.... -o Flash_Output
      ) &
      _JOB_I=$((_JOB_I+1))
      if [ $((_JOB_I % MAX_JOBS)) -eq 0 ]; then wait || { echo "[FATAL] per-sample 失败" >&2; exit 1; }; fi
    done
    wait || { echo "[FATAL] per-sample 失败" >&2; exit 1; }
-   【禁止的反模式】为 cutadapt、flash、frags_qc 各写一个独立的 `for SAMPLE ... ( ... ) & ... wait` 循环（即"每步各一个并行 stage"）；必须是单一融合区域。dada2 等汇总步骤（读取所有样本 manifest）必须在上述 wait 之后单次串行执行。
-15. 禁止用 cp / mkdir / touch / 占位注释替代任何工具。每个工具都必须真实调用其参考文档给出的 `stepX_*.sh` 脚本；文件名衔接不上时用重命名或 symlink，绝不用 cp 伪造输出。"""
+   禁止为每个 per-sample 工具各开一个 for 循环；必须是单一融合区域。
+6. 契约含 manifest（如 DADA2）：在 per-sample 区的 wait 之后，先生成 manifest.tsv（每样本一行：sample-id<TAB>$(pwd)/<上一步 QC 产物路径>），再调用该工具，含 -o。
+7. 引物 / 元数据 / 用户改的参数：按"额外参数"和"用户修改的参数"传入，覆盖默认值。
+8. 只输出 bash 脚本本身，不要解释、不要 markdown 代码块。
+9. 【简洁】只输出 export、必要变量、每步的 bash 调用行、简短进度 echo；禁止大段行内注释、禁止照抄契约原文、禁止多余空行。目标：行数最少且可读。"""
 
             user_message = f"""请根据以下信息生成完整的执行脚本：
 
@@ -794,7 +852,7 @@ class ChatService:
 ## 用户修改的参数（必须使用这些值，覆盖参考文档默认值）
 {param_overrides_desc}
 
-## 各工具参考文档
+## 各工具调用契约（结构化：脚本路径 / -o 输出目录 / 参数 / 产物文件名）
 {docs_content}
 
 请生成一个把这些工具串联起来的完整 bash 脚本，确保每一步的输入输出正确衔接。"""
@@ -1082,6 +1140,7 @@ class ChatService:
         generated_code_llm = ""
         algo_error = ""   # 非空 = 算法路径失败（脚本保持空，绝不把错误文字当脚本）
         llm_error = ""    # 非空 = LLM 路径失败
+        call_defs = {}    # 算法路填充；LLM 路复用同一份 DB 契约（算法路异常时保持空，LLM 回退 .md）
         if tool_ids:
             # ─── 1. 算法生成编排脚本 ───
             try:
@@ -1109,6 +1168,7 @@ class ChatService:
                 llm_out = ChatService._generate_orchestrator_with_llm(
                     tool_ids=tool_ids,
                     tool_chain=tool_chain,
+                    call_defs=call_defs,
                     file_mappings=enriched_mappings,
                     required_files=required_files_info,
                     extra_params=extra_params,
