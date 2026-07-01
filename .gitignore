@@ -32,6 +32,9 @@ Thumbs.db
 # Uploaded scripts（运行时上传存储，不入库；种子脚本 scripts/Amplicon 等仍跟踪）
 scripts/uploaded/
 
+# LLM 现生成脚本（ToolGenesisService 运行时落盘的产物，不入库）
+scripts/Amplicon/generated/
+
 # Ad-hoc test scripts
 test_playwright.py
 *.log

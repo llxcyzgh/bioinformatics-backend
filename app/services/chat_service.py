@@ -22,6 +22,7 @@ from app.services.domain_service import DomainService
 from app.services.domain_classifier import DomainClassifier
 from app.services.upload_service import UploadService
 from app.services.intent_agent import IntentAgent
+from app.services.tool_genesis_service import ToolGenesisService
 from config.llm import DASHSCOPE_API_BASE, DASHSCOPE_API_KEY, DASHSCOPE_MODEL_NAME, LLM_CODEGEN_TIMEOUT, LLM_PARSER_TIMEOUT
 from config.upload import UPLOAD_DIR
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
@@ -276,6 +277,172 @@ class ChatService:
         }
 
     @staticmethod
+    def _default_intent_route(
+        db: Session, domain, domain_id: int, content: str, history_dicts: list[dict],
+        task: Task, user_message: Message, history: list,
+    ) -> dict:
+        """默认路径：IntentAgent 理解意图 → _route_decision 路由。失败回退通用 AI。"""
+        try:
+            intent = IntentAgent.understand(db, domain, content, history_dicts)
+            logger.info(
+                f"[ChatService] 意图代理结果: sufficient={intent.get('sufficient')} "
+                f"fallback={intent.get('fallback')}"
+            )
+            return ChatService._route_decision(db, domain_id, intent, content, history_dicts)
+        except Exception as e:
+            logger.error(f"[ChatService] 意图识别/规划异常，回退到通用 AI: {e}")
+            return AIService.generate_response(task.id, user_message, history)
+
+    @staticmethod
+    def _pending_codegen_offer(history: list) -> dict | None:
+        """看上一条 assistant 消息是否能力缺口提议（Phase 2 发出）。
+
+        返回 {available, goals, missing_link} 或 None。仅识别【紧邻】的提议——
+        若 offer 之后系统已回过别的消息则不再触发。
+        """
+        for msg in reversed(history):
+            if msg.role != "assistant":
+                continue
+            if not msg.data:
+                return None
+            try:
+                data = json.loads(msg.data)
+            except (json.JSONDecodeError, TypeError):
+                return None
+            if not data.get("capability_gap"):
+                return None
+            available = json.loads(msg.available_inputs) if msg.available_inputs else []
+            goals = json.loads(msg.goal_types) if msg.goal_types else []
+            return {
+                "available": available,
+                "goals": goals,
+                "missing_link": data.get("missing_link", ""),
+            }
+        return None
+
+    @staticmethod
+    def _judge_codegen_acceptance(content: str) -> str:
+        """判定用户对『要我现在生成吗？』的回复：accept / decline / other。
+
+        LLM 判定；不可用/失败走关键词兜底。
+        """
+        text = (content or "").strip()
+        if not text:
+            return "other"
+        if not DASHSCOPE_API_KEY:
+            return ChatService._acceptance_keyword_fallback(text)
+        system = (
+            "我刚向用户提议『现在生成一个补缺口的单步脚本』。请判定用户这句回复的意图，"
+            "只输出 JSON：{\"verdict\": \"accept|decline|other\"}。\n"
+            "- accept：明确同意生成（好/可以/行/要/生成吧/同意/yes）；\n"
+            "- decline：明确拒绝（不用/算了/不要/别/换一个）；\n"
+            "- other：既非同意也非拒绝——补充新信息、改需求、提问、跑题"
+            "（如 我有双端数据 / 什么是单端 / 帮我做别的）。"
+        )
+        try:
+            resp = httpx.post(
+                f"{DASHSCOPE_API_BASE}/chat/completions",
+                headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}"},
+                json={
+                    "model": DASHSCOPE_MODEL_NAME,
+                    "temperature": 0,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": text},
+                    ],
+                },
+                timeout=LLM_PARSER_TIMEOUT,
+            )
+            resp.raise_for_status()
+            verdict = str(
+                json.loads(resp.json()["choices"][0]["message"]["content"]).get("verdict", "")
+            ).strip().lower()
+            if verdict in ("accept", "decline", "other"):
+                return verdict
+            return ChatService._acceptance_keyword_fallback(text)
+        except Exception as e:
+            logger.warning(f"[ChatService] 同意判定 LLM 失败，走关键词: {type(e).__name__}: {e}")
+            return ChatService._acceptance_keyword_fallback(text)
+
+    @staticmethod
+    def _acceptance_keyword_fallback(text: str) -> str:
+        """关键词兜底：decline 优先于 accept（避免『不好』误判）。"""
+        t = text.lower()
+        # decline 用更具体的词（单字『不』会误伤『不错』）
+        for w in ("不用", "不要", "算了", "别生", "拒绝", "换", "否", "no", "cancel"):
+            if w in t:
+                return "decline"
+        for w in ("好", "可以", "行", "要", "同意", "生成", "是的", "对", "嗯", "ok", "yes", "来吧"):
+            if w in t:
+                return "accept"
+        return "other"
+
+    @staticmethod
+    def _handle_codegen_accept(
+        db: Session, domain_id: int, offer: dict, content: str, user_id: int,
+    ) -> dict:
+        """用户同意现生成 → 生成+注册 → 重规划 → workflow 响应（带『已生成X工具』提示）。"""
+        try:
+            gen = ToolGenesisService.generate_and_register(db, domain_id, offer, user_id, content)
+        except Exception as e:
+            logger.error(f"[ChatService] 现生成异常: {type(e).__name__}: {e}")
+            gen = {"ok": False, "reason": f"现生成异常: {e}"}
+
+        if not gen.get("ok"):
+            return {
+                "type": "clarification",
+                "content": (
+                    f"抱歉，现生成脚本没成功（{gen.get('reason', '未知原因')}）。\n"
+                    "可以换个说法再试，或者我按现有能力帮你看看有没有别的路子。"
+                ),
+                "data": "",
+            }
+
+        tool_id = gen["tool_id"]
+        tool_name = gen.get("name") or tool_id
+        reused = gen.get("reused")
+        available = offer.get("available") or []
+        goals = offer.get("goals") or []
+        input_names = ChatService._format_data_type_names(available)
+        goal_names = ChatService._format_data_type_names(goals)
+
+        # 重规划：工具图已含新工具（generate_and_register 内已 invalidate）
+        candidates = PlannerService.plan_workflow(db, domain_id, available, goals)
+
+        if not candidates:
+            lead = "已存在" if reused else "已生成"
+            return {
+                "type": "clarification",
+                "content": (
+                    f"{lead}单步工具「{tool_name}」（{tool_id}）并录入脚本库，"
+                    f"但暂时仍规划不出从 {input_names} 到 {goal_names} 的完整路径。\n"
+                    "可能还需别的工具衔接，请补充更多细节。"
+                ),
+                "data": json.dumps({"codegen_done": True, "tool_id": tool_id}, ensure_ascii=False),
+            }
+
+        summary_parts = []
+        for i, c in enumerate(candidates):
+            summary_parts.append(
+                f"**方案{i + 1}**（{len(c['tool_chain'])}步，得分 {c['score']}）：{c['explanation']}"
+            )
+        summary = "\n\n".join(summary_parts)
+        lead = (
+            f"已存在现生成工具「{tool_name}」（{tool_id}），直接复用。\n\n"
+            if reused else
+            f"✅ 已现生成单步工具「{tool_name}」（{tool_id}）并录入脚本库。\n\n"
+        )
+        return {
+            "type": "workflow",
+            "content": f"{lead}输入数据：{input_names}\n分析目标：{goal_names}\n\n{summary}",
+            "data": json.dumps({"codegen_done": True, "tool_id": tool_id}, ensure_ascii=False),
+            "available_inputs": json.dumps(available, ensure_ascii=False),
+            "goal_types": json.dumps(goals, ensure_ascii=False),
+            "workflow_candidates": json.dumps(candidates, ensure_ascii=False),
+        }
+
+    @staticmethod
     def _out_of_scope_response(verdict: dict) -> dict:
         """明确与生信分析无关：友好说明 + 列出能做什么。不钉领域。"""
         content = (
@@ -429,18 +596,24 @@ class ChatService:
 
         # 意图识别 + 路由：仅在通过相关性闸（领域已定）时进行
         if domain is not None:
-            try:
-                intent = IntentAgent.understand(db, domain, combined_content, history_dicts)
-                logger.info(
-                    f"[ChatService] 意图代理结果: sufficient={intent.get('sufficient')} "
-                    f"fallback={intent.get('fallback')}"
+            # Phase 3：若上一轮是能力缺口提议，本轮先判是否同意现生成
+            offer = ChatService._pending_codegen_offer(history)
+            if offer is not None:
+                acceptance = ChatService._judge_codegen_acceptance(combined_content)
+                logger.info(f"[ChatService] 缺口提议待响应，用户回复判定: {acceptance}")
+                if acceptance == "accept":
+                    ai_response = ChatService._handle_codegen_accept(
+                        db, domain_id, offer, combined_content, user_id
+                    )
+                else:
+                    # decline/other：当作新一轮发言重新理解意图（用户可能改主意/补充/提问）
+                    ai_response = ChatService._default_intent_route(
+                        db, domain, domain_id, combined_content, history_dicts, task, user_message, history
+                    )
+            else:
+                ai_response = ChatService._default_intent_route(
+                    db, domain, domain_id, combined_content, history_dicts, task, user_message, history
                 )
-
-                # Decision routing
-                ai_response = ChatService._route_decision(db, domain_id, intent, combined_content, history_dicts)
-            except Exception as e:
-                logger.error(f"[ChatService] 意图识别/规划异常，回退到通用 AI: {e}")
-                ai_response = AIService.generate_response(task.id, user_message, history)
         elif verdict and verdict.get("in_scope") and len(verdict.get("candidates") or []) >= 2:
             # 多库低置信：列出候选领域请用户确认，不钉领域（T4）
             ai_response = ChatService._disambiguate_response(verdict["candidates"])
