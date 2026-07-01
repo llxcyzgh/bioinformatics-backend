@@ -35,6 +35,10 @@ scripts/uploaded/
 # v1 旧脚本库归档（已被 Amplicon_v2 取代，本地保留一个周期，不入库；v1 可从 git 历史恢复）
 scripts/Amplicon_v1_archive/
 
+# v2 自带的 dada2 大示例输入（>50MB，GitHub 警告；本地保留作测试，不入库）
+scripts/Amplicon/examples/step3_dada2/T2001.fastq
+scripts/Amplicon/examples/step3_dada2/T2002.fastq
+
 # Ad-hoc test scripts
 test_playwright.py
 *.log
