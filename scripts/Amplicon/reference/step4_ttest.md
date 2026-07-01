@@ -16,8 +16,8 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| Relative/ | 各分类层级相对丰度表目录 | DIR | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_ttest/Relative/) |
-| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_ttest/group.list) |
+| Relative/ | 各分类层级相对丰度表目录 | DIR | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_ttest/Relative/) |
+| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_ttest/group.list) |
 
 ---
 
@@ -34,14 +34,14 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_ttest.sh -i Relative/ -g group.list [--threshold <P 值>]
-# 输出：*/t_test_*.txt, */wilcox_test_*.txt
+bash ${AMPLICON_ROOT}/v2/scripts/step4_ttest.sh -i Relative/ -g group.list [--threshold <P 值>] -o Ttest_Output/
+# 输出目录：Ttest_Output/；文件：*/t_test_*.txt, */wilcox_test_*.txt
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_ttest.sh -i Relative/ -g group.list --threshold 0.05
-# 输出：phylum/t_test_*.txt, phylum/wilcox_test_*.txt, ...
+bash ${AMPLICON_ROOT}/v2/scripts/step4_ttest.sh -i Relative/ -g group.list --threshold 0.05 -o Ttest_Output/
+# 输出目录：Ttest_Output/；文件：phylum/t_test_*.txt, phylum/wilcox_test_*.txt, ...
 ```
 
 ### 参数说明
@@ -52,6 +52,7 @@ bash ${AMPLICON_ROOT}/scripts/step4_ttest.sh -i Relative/ -g group.list --thresh
 | -g, --group | 样本分组文件路径 | 是 | - | group.list |
 | --threshold | P 值阈值 | 否 | 0.05 | 0.05 |
 | --method | 检验方法 | 否 | t | t 或 wilcox |
+| -o, --output | 输出目录 | 是 | - | Ttest_Output/ |
 
 ---
 
@@ -82,7 +83,7 @@ bash ${AMPLICON_ROOT}/scripts/step4_ttest.sh -i Relative/ -g group.list --thresh
 echo 'export PERL_BIN="/your/path/to/perl"' > .env
 echo 'export GET_T_WILCOX_PL="/your/path/to/get.t.wilcox.pl"' >> .env
 source .env
-bash step4_ttest.sh ...
+bash step4_ttest.sh ... -o Ttest_Output/
 ```
 
 ---
@@ -106,10 +107,10 @@ bash step4_ttest.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step4_ttest.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step4_ttest.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step4_ttest/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step4_ttest.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step4_ttest.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step4_ttest/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

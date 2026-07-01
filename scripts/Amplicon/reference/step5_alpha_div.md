@@ -16,8 +16,8 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| alpha_diversity_index.txt | Alpha 多样性指数表 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step5_alpha_div/alpha_diversity_index.txt) |
-| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step5_alpha_div/group.list) |
+| alpha_diversity_index.txt | Alpha 多样性指数表 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step5_alpha_div/alpha_diversity_index.txt) |
+| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step5_alpha_div/group.list) |
 
 ---
 
@@ -38,14 +38,14 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step5_alpha_div.sh -i alpha_diversity_index.txt -g group.list
-# 输出：anova_test.txt, beeswarm/, alpha_diff.svg/png
+bash ${AMPLICON_ROOT}/v2/scripts/step5_alpha_div.sh -i alpha_diversity_index.txt -g group.list -o AlphaDiv_Output/
+# 输出目录：AlphaDiv_Output/；文件：anova_test.txt, beeswarm/, alpha_diff.svg/png
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step5_alpha_div.sh -i alpha_diversity_index.txt -g group.list
-# 输出：anova_test.txt, beeswarm/observed_features.svg/png, beeswarm/shannon.svg/png, alpha_diff.svg/png
+bash ${AMPLICON_ROOT}/v2/scripts/step5_alpha_div.sh -i alpha_diversity_index.txt -g group.list -o AlphaDiv_Output/
+# 输出目录：AlphaDiv_Output/；文件：anova_test.txt, beeswarm/observed_features.svg/png, beeswarm/shannon.svg/png, alpha_diff.svg/png
 ```
 
 ### 参数说明
@@ -54,6 +54,7 @@ bash ${AMPLICON_ROOT}/scripts/step5_alpha_div.sh -i alpha_diversity_index.txt -g
 |------|------|------|--------|------|
 | -i, --input | Alpha 多样性指数表路径 | 是 | - | alpha_diversity_index.txt |
 | -g, --group | 样本分组文件路径 | 是 | - | group.list |
+| -o, --output | 输出目录 | 是 | - | AlphaDiv_Output/ |
 
 ---
 
@@ -114,7 +115,7 @@ echo 'export ALPHA_DIV_ANOVA_TEST_PL="/your/path/to/Alpha_div_anova_test.pl"' >>
 echo 'export BEESWARM_PL="/your/path/to/beeswarm.pl"' >> .env
 echo 'export COLOR_DEFINED_PL="/your/path/to/color_defined.pl"' >> .env
 source .env
-bash step5_alpha_div.sh ...
+bash step5_alpha_div.sh ... -o AlphaDiv_Output/
 ```
 
 ---
@@ -139,10 +140,10 @@ bash step5_alpha_div.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step5_alpha_div.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step5_alpha_div.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step5_alpha_div/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step5_alpha_div.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step5_alpha_div.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step5_alpha_div/`
 
 ---
 
-最后更新：2026-04-16
+最后更新：2026-06-24

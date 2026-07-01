@@ -1,8 +1,11 @@
 #!/bin/bash
 # step2_frags_qc.sh - Frags_QC 质量控制脚本
-# 用法：bash step2_frags_qc.sh -i <sample.extendedFrags.fastq> [-q quality] [-u max_n] [-d ref_db]
+# 用法：bash step2_frags_qc.sh -i <sample.extendedFrags.fastq> [-q quality] [-u max_n] [-d ref_db] -o <output_dir>
 
 set -e
+
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
 
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
@@ -33,12 +36,15 @@ QUALITY="19"
 MAX_N="15"
 REF_DB=""
 
+OUTPUT_DIR=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         -i|--input) INPUT_FASTQ="$2"; shift 2 ;;
         -q|--quality) QUALITY="$2"; shift 2 ;;
         -u|--max-n) MAX_N="$2"; shift 2 ;;
         -d|--ref-db) REF_DB="$2"; shift 2 ;;
+        -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+
         -h|--help)
             echo "用法：bash step2_frags_qc.sh -i <sample.extendedFrags.fastq> [-q quality] [-u max_n] [-d ref_db]"
             echo ""
@@ -47,6 +53,8 @@ while [[ $# -gt 0 ]]; do
             echo "  -q, --quality    质量阈值 (默认：19)"
             echo "  -u, --max-n      最大 N 比例 (默认：15)"
             echo "  -d, --ref-db     参考数据库 (可选)"
+            echo "  -o, --output     输出目录"
+
             echo "  -h, --help       显示帮助"
             exit 0
             ;;
@@ -60,6 +68,17 @@ done
 
 # 从文件名提取样本名 (去掉 .extendedFrags.fastq 后缀)
 SAMPLE_NAME=$(basename "${INPUT_FASTQ}" | sed 's/\.extendedFrags\.fastq$//')
+
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
+
+# ----- 路径转绝对路径（cd 输出目录前） -----
+INPUT_FASTQ="$(abs_path_file "${INPUT_FASTQ}")"
+REF_DB="$(abs_path_file_optional "${REF_DB}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+cd "${OUTPUT_DIR}"
 
 echo ""
 echo "=========================================="
@@ -87,34 +106,31 @@ echo "[1/6] fastp 质量过滤..."
 
 # Step 2: 格式转换
 echo "[2/6] 格式转换..."
-zcat "${SAMPLE_NAME}.clean.fq.gz" | \
-    sed "1~4s=@=@${SAMPLE_NAME} =g" | \
-    awk 'NR%4==1{{ $1=$1"_"int(NR/4)+1;print $0 }} NR%4!=1{{ print $0 }}' > seqs.fastq
+zcat "${SAMPLE_NAME}.clean.fq.gz" | sed "1~4s=@=@${SAMPLE_NAME} =g" | awk 'NR%4==1{{ $1=$1"_"int(NR/4)+1;print $0 }} NR%4!=1{{ print $0 }}' > ${SAMPLE_NAME}.bak.fastq
 
-awk 'NR%4>0 && NR%4<3{{ print $1 }}' seqs.fastq | \
-    sed "s=@=>=g" > seqs.fna
+awk 'NR%4>0 && NR%4<3{{ print $1 }}' ${SAMPLE_NAME}.bak.fastq | sed "s=@=>=g" > ${SAMPLE_NAME}.bak.fna
 
 # Step 3: 去嵌合体
 echo "[3/6] VSEARCH 去嵌合体..."
 if [ -n "${REF_DB}" ] && [ -f "${REF_DB}" ]; then
     "${VSEARCH_BIN}" \
-        -uchime_ref seqs.fna \
+        -uchime_ref ${SAMPLE_NAME}.bak.fna \
         -db "${REF_DB}" \
-        -nonchimeras seqs.nonchimeras.fna
+        -nonchimeras ${SAMPLE_NAME}.nonchimeras.fna
 else
     echo "⚠️  未提供参考数据库，跳过嵌合体去除"
-    cp seqs.fna seqs.nonchimeras.fna
+    cp ${SAMPLE_NAME}.bak.fna ${SAMPLE_NAME}.nonchimeras.fna
 fi
 
 # Step 4: 提取序列
 echo "[4/6] 提取非嵌合体序列..."
 perl "${SELECT_FQ_IN_FA_PL}" \
-    "${SAMPLE_NAME}.clean.fq.gz" \
-    seqs.nonchimeras.fna \
-    seqs.nonchimeras.fastq
+    "${SAMPLE_NAME}.bak.fastq" \
+    ${SAMPLE_NAME}.nonchimeras.fna \
+    ${SAMPLE_NAME}.nonchimeras.fastq
 
-mv -f seqs.nonchimeras.fastq "${SAMPLE_NAME}.fastq"
-mv -f seqs.nonchimeras.fna "${SAMPLE_NAME}.fna"
+mv -f ${SAMPLE_NAME}.nonchimeras.fastq "${SAMPLE_NAME}.fastq"
+mv -f ${SAMPLE_NAME}.nonchimeras.fna "${SAMPLE_NAME}.fna"
 
 # Step 5: 长度分布图
 echo "[5/6] 生成序列长度分布图..."
@@ -132,10 +148,10 @@ echo "[6/6] 生成详细质控报告..."
 "${NG_QC_BIN}" \
     -i "${SAMPLE_NAME}.fastq" \
     -N 1 -q 33 -L 5 -p 1 \
-    -o ng_QC
+    -o ${SAMPLE_NAME}.ng_QC
 
 # 清理临时文件
-rm -f seqs.fastq seqs.fna seqs.nonchimeras.fna "${SAMPLE_NAME}.clean.fq.gz" "${SAMPLE_NAME}.fna.histograms.svg"
+rm -f ${SAMPLE_NAME}.bak.fastq ${SAMPLE_NAME}.bak.fna ${SAMPLE_NAME}.nonchimeras.fna "${SAMPLE_NAME}.clean.fq.gz" "${SAMPLE_NAME}.fna.histograms.svg"
 
 echo ""
 echo "✅ Frags_QC 质量控制完成"

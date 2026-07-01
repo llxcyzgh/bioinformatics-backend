@@ -16,8 +16,8 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| ${sample}.R1.fastq.gz | 前向测序文件 (双端) | FASTQ.GZ | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step1_cutadapt/CKM031.R1.fastq.gz) |
-| ${sample}.R2.fastq.gz | 反向测序文件 (双端) | FASTQ.GZ | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step1_cutadapt/CKM031.R2.fastq.gz) |
+| ${sample}.R1.fastq.gz | 前向测序文件 (双端) | FASTQ.GZ | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step1_cutadapt/T1001.R1.fastq.gz) |
+| ${sample}.R2.fastq.gz | 反向测序文件 (双端) | FASTQ.GZ | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step1_cutadapt/T1001.R2.fastq.gz) |
 
 ---
 
@@ -36,28 +36,29 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step1_cutadapt.sh -r1 <样本名>.R1.fastq.gz -r2 <样本名>.R2.fastq.gz -f <正向引物> -r <反向引物>
-# 输出：<样本名>.cutadapt.R1.fastq.gz, <样本名>.cutadapt.R2.fastq.gz
+bash ${AMPLICON_ROOT}/v2/scripts/step1_cutadapt.sh -r1 <样本名>.R1.fastq.gz -r2 <样本名>.R2.fastq.gz -f <正向引物> -r <反向引物> -o Cutadapt_Output/
+# 输出目录：Cutadapt_Output/；文件：<样本名>.cutadapt.R1.fastq.gz, <样本名>.cutadapt.R2.fastq.gz
 ```
 
 **示例**（16S V3-V4）：
 ```bash
 # 样本 Sample001
-bash step1_cutadapt.sh -r1 Sample001.R1.fastq.gz -r2 Sample001.R2.fastq.gz -f ACTCCTACGGGAGGCAGCAG -r GGACTACHVGGGTWTCTAAT
-# 输出：Sample001.cutadapt.R1.fastq.gz, Sample001.cutadapt.R2.fastq.gz
+bash step1_cutadapt.sh -r1 Sample001.R1.fastq.gz -r2 Sample001.R2.fastq.gz -f ACTCCTACGGGAGGCAGCAG -r GGACTACHVGGGTWTCTAAT -o Cutadapt_Output/
+# 输出目录：Cutadapt_Output/；文件：Sample001.cutadapt.R1.fastq.gz, Sample001.cutadapt.R2.fastq.gz
 ```
 
 ### 参数说明
 
 | 参数 | 说明 | 必需 | 默认值 | 示例 |
 |------|------|------|--------|------|
-| -r1, --r1-path | 前向测序文件路径 | 是 | - | CKM031.R1.fastq.gz |
-| -r2, --r2-path | 反向测序文件路径 | 是 | - | CKM031.R2.fastq.gz |
+| -r1, --r1-path | 前向测序文件路径 | 是 | - | T1001.R1.fastq.gz |
+| -r2, --r2-path | 反向测序文件路径 | 是 | - | T1001.R2.fastq.gz |
 | -f, --f-primer | 前向引物序列 | 是 | - | ACTCCTACGGGAGGCAGCAG |
 | -r, --r-primer | 反向引物序列 | 是 | - | GGACTACHVGGGTWTCTAAT |
 | -e, --error-rate | 错误率 | 否 | 0.1 | 0.1 |
 | -l, --min-length | 最小长度阈值 | 否 | 100 | 100 |
 | -n, --threads | 线程数 | 否 | 1 | 12 |
+| -o, --output | 输出目录 | 是 | - | Cutadapt_Output/ |
 
 ---
 
@@ -88,16 +89,16 @@ bash step1_cutadapt.sh -r1 Sample001.R1.fastq.gz -r2 Sample001.R2.fastq.gz -f AC
 # 创建 .env 文件
 echo 'export CUTADAPT_BIN="/your/path/to/cutadapt"' > .env
 source .env
-bash step1_cutadapt.sh ...
+bash step1_cutadapt.sh ... -o Cutadapt_Output/
 ```
 ---
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step1_cutadapt.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step1_cutadapt.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step1_cutadapt/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step1_cutadapt.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step1_cutadapt.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step1_cutadapt/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

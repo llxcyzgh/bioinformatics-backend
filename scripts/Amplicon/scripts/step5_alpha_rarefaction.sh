@@ -1,8 +1,11 @@
 #!/bin/bash
 # step5_alpha_rarefaction.sh - Alpha 多样性稀化曲线脚本
-# 用法：bash step5_alpha_rarefaction.sh -t <asv_table.even.txt> -m <alpha.mf> -g <group.list>
+# 用法：bash step5_alpha_rarefaction.sh -t <asv_table.even.txt> -g <group.list> -o <output_dir>
 
 set -e
+
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
 
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
@@ -44,21 +47,23 @@ if [ ! -f "${COLOR_DEFINED_PL}" ]; then
 fi
 
 ASV_TABLE=""
-META_FILE=""
 GROUP_FILE=""
 
+OUTPUT_DIR=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         -t|--table) ASV_TABLE="$2"; shift 2 ;;
-        -m|--meta) META_FILE="$2"; shift 2 ;;
         -g|--group) GROUP_FILE="$2"; shift 2 ;;
+                -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+
         -h|--help)
-            echo "用法：bash step5_alpha_rarefaction.sh -t <asv_table.even.txt> -m <alpha.mf> -g <group.list>"
+            echo "用法：bash step5_alpha_rarefaction.sh -t <asv_table.even.txt> -g <group.list> -o <output_dir>"
             echo ""
             echo "参数:"
             echo "  -t, --table    均一化 ASV 表路径"
-            echo "  -m, --meta     样本元数据文件路径"
             echo "  -g, --group    样本分组文件路径"
+            echo "  -o, --output     输出目录"
+
             echo "  -h, --help     显示帮助"
             exit 0
             ;;
@@ -68,11 +73,20 @@ done
 
 # 参数验证
 [ -z "${ASV_TABLE}" ] && { echo "❌ 错误：必须提供 -t"; exit 1; }
-[ -z "${META_FILE}" ] && { echo "❌ 错误：必须提供 -m"; exit 1; }
 [ -z "${GROUP_FILE}" ] && { echo "❌ 错误：必须提供 -g"; exit 1; }
 [ ! -f "${ASV_TABLE}" ] && { echo "❌ 错误：ASV 表不存在：${ASV_TABLE}"; exit 1; }
-[ ! -f "${META_FILE}" ] && { echo "❌ 错误：元数据文件不存在：${META_FILE}"; exit 1; }
 [ ! -f "${GROUP_FILE}" ] && { echo "❌ 错误：分组文件不存在：${GROUP_FILE}"; exit 1; }
+
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
+
+# ----- 路径转绝对路径（cd 输出目录前） -----
+ASV_TABLE="$(abs_path_file "${ASV_TABLE}")"
+GROUP_FILE="$(abs_path_file "${GROUP_FILE}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+cd "${OUTPUT_DIR}"
 
 echo ""
 echo "=========================================="
@@ -81,7 +95,6 @@ echo "=========================================="
 echo ""
 
 echo "📊 ASV 表：${ASV_TABLE}"
-echo "📊 元数据：${META_FILE}"
 echo "📊 分组文件：${GROUP_FILE}"
 echo ""
 
@@ -144,7 +157,7 @@ fi
 
 # Step 7: 绘制分组 Rank Abundance 曲线
 echo "[7/9] 生成分组 ASV 表..."
-"${PERL_BIN}" "${COMBINE_OTUTABLE_PL}" "${ASV_TABLE}" "${META_FILE}" > group_otu_table.even.txt
+"${PERL_BIN}" "${COMBINE_OTUTABLE_PL}" "${ASV_TABLE}" "${GROUP_FILE}" > group_otu_table.even.txt
 
 echo "[8/9] 绘制分组 Rank Abundance 曲线..."
 "${RSCRIPT_BIN}" "${RANK_ABUNDANCE_GROUP_R}" group_otu_table.even.txt "${GROUP_COL_LIST}" group_rank_abundance

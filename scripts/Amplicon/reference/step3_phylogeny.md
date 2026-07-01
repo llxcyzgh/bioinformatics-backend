@@ -16,8 +16,8 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|------|
-| featureSeqs.qza | ASV 代表序列（QIIME2） | QZA | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step3_phylogeny/featureSeqs.qza) |
-| sequences.fasta | ASV 代表序列（FASTA） | FASTA | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step3_phylogeny/sequences.fasta) |
+| featureSeqs.qza | ASV 代表序列（QIIME2） | QZA | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step3_phylogeny/featureSeqs.qza) |
+| sequences.fasta | ASV 代表序列（FASTA） | FASTA | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step3_phylogeny/sequences.fasta) |
 
 **自动格式检测**：
 - 脚本自动检测输入文件格式（`.qza` 或 `.fasta/.fa/.fna`）
@@ -28,12 +28,14 @@
 
 ## 输出
 
+> 所有输出文件均写入 `-o` 指定的目录（下表路径相对于输出目录）。
+
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| rooted-tree.qza | 有根系统发育树（QIIME2） | QZA | 16S/18S/ITS | 通用 | - |
-| unrooted-tree.qza | 无根系统发育树（QIIME2） | QZA | 16S/18S/ITS | 通用 | - |
-| rooted_tree.nwk | 有根系统发育树（Newick） | NWK | 16S/18S/ITS | 通用 | - |
-| unrooted_tree.nwk | 无根系统发育树（Newick） | NWK | 16S/18S/ITS | 通用 | - |
+| Phylogeny_Output/rooted-tree.qza | 有根系统发育树（QIIME2） | QZA | 16S/18S/ITS | 通用 | - |
+| Phylogeny_Output/unrooted-tree.qza | 无根系统发育树（QIIME2） | QZA | 16S/18S/ITS | 通用 | - |
+| Phylogeny_Output/rooted_tree.nwk | 有根系统发育树（Newick） | NWK | 16S/18S/ITS | 通用 | - |
+| Phylogeny_Output/unrooted_tree.nwk | 无根系统发育树（Newick） | NWK | 16S/18S/ITS | 通用 | - |
 
 ---
 
@@ -43,27 +45,28 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_phylogeny.sh -i <输入文件> -n <threads>
-# 输出：rooted-tree.qza, unrooted-tree.qza, rooted_tree.nwk, unrooted_tree.nwk
+bash ${AMPLICON_ROOT}/v2/scripts/step3_phylogeny.sh -i <输入文件> -n <threads> -o Phylogeny_Output/
+# 输出目录：Phylogeny_Output/；文件：rooted-tree.qza, unrooted-tree.qza, rooted_tree.nwk, unrooted_tree.nwk
 ```
 
 **示例 1**：使用 step3_dada2 输出（qza 格式）
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_phylogeny.sh -i featureSeqs.qza -n 12
-# 输出：rooted-tree.qza, unrooted-tree.qza, rooted_tree.nwk, unrooted_tree.nwk
+bash ${AMPLICON_ROOT}/v2/scripts/step3_phylogeny.sh -i featureSeqs.qza -n 12 -o Phylogeny_Output/
+# 输出目录：Phylogeny_Output/；文件：rooted-tree.qza, unrooted-tree.qza, rooted_tree.nwk, unrooted_tree.nwk
 ```
 
 **示例 2**：使用用户提供的 FASTA 文件
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_phylogeny.sh -i ASV_representative_sequences.fasta -n 12
+bash ${AMPLICON_ROOT}/v2/scripts/step3_phylogeny.sh -i ASV_representative_sequences.fasta -n 12 -o Phylogeny_Output/
 # 自动转换：ASV_representative_sequences.fasta → featureSeqs_temp.qza
-# 输出：rooted-tree.qza, unrooted-tree.qza, rooted_tree.nwk, unrooted_tree.nwk
+# 输出目录：Phylogeny_Output/；文件：rooted-tree.qza, unrooted-tree.qza, rooted_tree.nwk, unrooted_tree.nwk
 ```
 
 | 参数 | 说明 | 必需 | 默认值 | 示例 |
 |------|------|------|--------|------|
 | -i, --input | 输入文件路径（.qza 或 .fasta/.fa/.fna） | 是 | - | featureSeqs.qza 或 sequences.fasta |
 | -n, --threads | 线程数 | 否 | 12 | 12 |
+| -o, --output | 输出目录 | 是 | - | Phylogeny_Output/ |
 
 ---
 
@@ -102,7 +105,7 @@ bash ${AMPLICON_ROOT}/scripts/step3_phylogeny.sh -i ASV_representative_sequences
 echo 'export CONDA_BIN="/your/path/to/conda"' > .env
 echo 'export QIIME_BIN="/your/path/to/qiime"' >> .env
 source .env
-bash step3_phylogeny.sh ...
+bash step3_phylogeny.sh ... -o Phylogeny_Output/
 ```
 ---
 
@@ -125,10 +128,10 @@ bash step3_phylogeny.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step3_phylogeny.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step3_phylogeny.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step3_phylogeny/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step3_phylogeny.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step3_phylogeny.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step3_phylogeny/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

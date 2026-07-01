@@ -2,26 +2,25 @@
 
 ## 输入文件
 
-- `evenabs/` - 均一化绝对丰度表目录（6 个分类层级，76K）
-  - `phylum/` - 门水平（9.0K）
-  - `class/` - 纲水平（12K）
-  - `order/` - 目水平（14K）
-  - `family/` - 科水平（14K）
-  - `genus/` - 属水平（14K）
-  - `species/` - 种水平（6.9K）
-- `group.list` - 样本分组文件（212B, 20 个样本）
-- `Vs.list` - 对比组列表（71B, 2 组对比）
+- `asv_table.even.txt` - 均一化 ASV 表（脚本内生成各层级 even 绝对丰度）
+- `group.list` - 样本分组（12 样本）
+- `Vs.list` - 对比组列表（`T100_vs_T200`、`T109_vs_T209`）
 
 ## 测试命令
 
 ```bash
-cd "${AMPLICON_ROOT}/examples/step4_metastat"
-bash "${AMPLICON_ROOT}/scripts/step4_metastat.sh" -e evenabs/ -g group.list -v Vs.list
+bash "${AMPLICON_ROOT}/v2/scripts/step4_metastat.sh" \
+    -e "${AMPLICON_ROOT}/v2/examples/step4_metastat/asv_table.even.txt" \
+    -g "${AMPLICON_ROOT}/v2/examples/step4_metastat/group.list" \
+    -v "${AMPLICON_ROOT}/v2/examples/step4_metastat/Vs.list" \
+    -l genus,phylum \
+    -o MetaStat_Output/
 ```
 
 ## 示例来源
 
-- 输入：`${AMPLICON_ROOT}/examples/step4_metastat/evenabs/`
-- 输入：`${AMPLICON_ROOT}/examples/step4_metastat/group.list`
-- 输入：`${AMPLICON_ROOT}/examples/step4_metastat/Vs.list`
-- 输出：`${AMPLICON_ROOT}/examples/step4_metastat/`（或由 `-o` 指定）
+- 复制自：`/grj/BioAgent/test/TableStats/`、`vs.list`（转为 `Vs.list`）
+
+## 输出
+
+- `{level}/metastat_*.txt`、箱线图等

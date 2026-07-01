@@ -16,9 +16,9 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| asv_table.even.qza | 均一化 ASV 表（QIIME2） | QZA | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step3_beta_data/asv_table.even.txt) |
+| asv_table.even.txt | 均一化 ASV 表 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step3_beta_data/asv_table.even.txt) |
 | rooted-tree.qza | 有根系统发育树 | QZA | 16S/18S/ITS | 通用 | - |
-| alpha.mf | 样本元数据文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step3_beta_data/alpha.mf) |
+| alpha.mf | 样本元数据文件（表头：`#SampleID	Description`） | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step3_alpha_data/alpha.mf) |
 
 ---
 
@@ -27,6 +27,8 @@
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
 | rarefied_table.qza | 重采样后的 ASV 表 | QZA | 16S/18S/ITS | 通用 | - |
+| asv_table.even.qza | QIIME2 特征表（由 TSV 转换生成） | QZA | 16S/18S/ITS | 通用 | - |
+| metadata.qiime.mf | 补全表头后的元数据（仅当输入缺少表头时生成） | TSV | 16S/18S/ITS | 通用 | - |
 | faith_pd_vector.qza | Faith 系统发育多样性指数 | QZA | 16S/18S/ITS | 通用 | - |
 | observed_features_vector.qza | 观测物种数向量 | QZA | 16S/18S/ITS | 通用 | - |
 | shannon_vector.qza | Shannon 多样性指数向量 | QZA | 16S/18S/ITS | 通用 | - |
@@ -43,6 +45,10 @@
 | weighted_unifrac_emperor.qzv | 加权 UniFrac Emperor 可视化 | QZV | 16S/18S/ITS | 通用 | - |
 | jaccard_emperor.qzv | Jaccard Emperor 可视化 | QZV | 16S/18S/ITS | 通用 | - |
 | bray_curtis_emperor.qzv | Bray-Curtis Emperor 可视化 | QZV | 16S/18S/ITS | 通用 | - |
+| *_qza/ | QZA 解压目录（距离矩阵、PCoA 坐标等） | 目录 | 16S/18S/ITS | 通用 | - |
+| *_qzv/ | QZV 解压目录（Emperor 可视化数据） | 目录 | 16S/18S/ITS | 通用 | - |
+| unweighted_unifrac_pcoa_results_qza/ordination.txt | 非加权 UniFrac PCoA 坐标 | TXT | 16S/18S/ITS | 通用 | - |
+| weighted_unifrac_pcoa_results_qza/ordination.txt | 加权 UniFrac PCoA 坐标 | TXT | 16S/18S/ITS | 通用 | - |
 
 ---
 
@@ -50,23 +56,37 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_beta_data.sh -i asv_table.even.qza -t rooted-tree.qza -m alpha.mf
-# 输出：*_distance_matrix.qza, *_pcoa_results.qza, *_emperor.qzv
+bash ${AMPLICON_ROOT}/v2/scripts/step3_beta_data.sh -i asv_table.even.txt -t rooted-tree.qza -m alpha.mf -o BetaData_Output/
+# 输出目录：BetaData_Output/；文件：asv_table.even.qza, *_distance_matrix.qza, *_pcoa_results.qza, *_emperor.qzv
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_beta_data.sh -i asv_table.even.qza -t rooted-tree.qza -m alpha.mf
-# 输出：rarefied_table.qza, faith_pd_vector.qza, ..., bray_curtis_emperor.qzv
+bash ${AMPLICON_ROOT}/v2/scripts/step3_beta_data.sh -i asv_table.even.txt -t rooted-tree.qza -m alpha.mf -o BetaData_Output/
+# 输出目录：BetaData_Output/；文件：asv_table.even.qza, rarefied_table.qza, faith_pd_vector.qza, ..., bray_curtis_emperor.qzv
 ```
 
 ### 参数说明
 
 | 参数 | 说明 | 必需 | 默认值 | 示例 |
 |------|------|------|--------|------|
-| -i, --input | 均一化 ASV 表路径 | 是 | - | asv_table.even.qza |
+| -i, --input | 均一化 ASV 表路径（TSV/TXT，也支持 QZA） | 是 | - | asv_table.even.txt |
 | -t, --tree | 有根系统发育树路径 | 是 | - | rooted-tree.qza |
-| -m, --meta | 样本元数据文件路径 | 是 | - | alpha.mf |
+| -m, --meta | 样本元数据文件路径（需含 `#SampleID	Description` 表头，缺失时自动补全） | 是 | - | alpha.mf |
+| -o, --output | 输出目录 | 是 | - | BetaData_Output/ |
+| -d, --depth | 采样深度 | 否 | 自动取最小样本 reads 数 | 5000 |
+
+### 元数据格式（alpha.mf）
+
+QIIME2 要求元数据首行为 `#SampleID	Description`（Tab 分隔）。脚本会自动检测：若缺少该表头，会在输出目录生成 `metadata.qiime.mf` 并补全表头后再分析。
+
+```
+#SampleID	Description
+D1	D
+D2	D
+Y.K1	Y
+...
+```
 
 ---
 
@@ -84,17 +104,17 @@ bash ${AMPLICON_ROOT}/scripts/step3_beta_data.sh -i asv_table.even.qza -t rooted
 ## 流程步骤
 
 ```
-1️⃣ 导入 QIIME2 环境
+1️⃣ TSV → BIOM 转换（biom convert）
    ↓
-2️⃣ core-metrics-phylogenetic（核心多样性分析）
+2️⃣ BIOM → QZA 导入（qiime tools import）
    ↓
-3️⃣ 计算 4 种距离矩阵（UniFrac, Jaccard, Bray-Curtis）
+3️⃣ 自动计算采样深度（最小样本 reads 数）
    ↓
-4️⃣ PCoA 降维排序
+4️⃣ core-metrics-phylogenetic（核心多样性分析）
    ↓
-5️⃣ 生成 Emperor 交互式可视化
+5️⃣ qiime tools export（导出所有 QZA/QZV 解压结果）
    ↓
-6️⃣ 导出所有 qza/qzv 文件
+6️⃣ 输出 *_qza/（距离矩阵、PCoA ordination.txt 等）和 *_qzv/（Emperor 数据）
 ```
 
 ---
@@ -117,7 +137,7 @@ bash ${AMPLICON_ROOT}/scripts/step3_beta_data.sh -i asv_table.even.qza -t rooted
 echo 'export CONDA_BIN="/your/path/to/conda"' > .env
 echo 'export QIIME_BIN="/your/path/to/qiime"' >> .env
 source .env
-bash step3_beta_data.sh ...
+bash step3_beta_data.sh ... -o BetaData_Output/
 ```
 
 ---
@@ -135,17 +155,18 @@ bash step3_beta_data.sh ...
 
 | 工具 | 输入文件 | 说明 |
 |------|----------|------|
-| step4_beta | *_distance_matrix.qza | Beta 多样性统计检验 |
-| step4_pcoa | *_pcoa_results.qza | PCoA 排序图 |
+| step3_upgma | *_pcoa_results_qza/ordination.txt | UPGMA / PCoA 坐标整理（pcoa.pl） |
+| step5_pcoa | BetaData/*_pcoa_results_qza/ordination.txt | PCoA 排序图（`-i` + `-d` 选距离） |
+| step5_beta_div | *_distance_matrix_qza/ | Beta 多样性组间差异检验 |
 
 ---
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step3_beta_data.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step3_beta_data.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step3_beta_data/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step3_beta_data.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step3_beta_data.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step3_beta_data/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

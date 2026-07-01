@@ -1,13 +1,16 @@
 #!/bin/bash
 # step3_phylogeny.sh - 系统发育树构建脚本
-# 用法：bash step3_phylogeny.sh -i <featureSeqs.qza|sequences.fasta> [-n threads]
+# 用法：bash step3_phylogeny.sh -i <featureSeqs.qza|sequences.fasta> [-n threads] -o <output_dir>
 
 set -e
 
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
+
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
-CONDA_BIN="${CONDA_BIN:-/software/anaconda3/bin/conda}"
-QIIME_BIN="${QIIME_BIN:-/software/anaconda3/envs/16s-env/bin/qiime}"
+CONDA_BIN="${CONDA_BIN:-/software/anaconda3/bin}"
+CONDA_ENV="${CONDA_ENV:-16s-env}"
 
 # 如果设置了 MODULE_ENV_FILE，先加载配置文件
 if [ -n "${MODULE_ENV_FILE}" ] && [ -f "${MODULE_ENV_FILE}" ]; then
@@ -15,29 +18,31 @@ if [ -n "${MODULE_ENV_FILE}" ] && [ -f "${MODULE_ENV_FILE}" ]; then
     source "${MODULE_ENV_FILE}"
 fi
 
-# 验证软件存在
-for bin in CONDA_BIN QIIME_BIN; do
-    if [ ! -x "${!bin}" ]; then
-        echo "❌ 错误：${bin} 不存在：${!bin}"
-        echo "   可通过环境变量覆盖，例如：export ${bin}=\"/your/path/to/${bin}\""
-        exit 1
-    fi
-done
+if [ ! -f "${CONDA_BIN}/activate" ]; then
+    echo "❌ 错误：CONDA activate 不存在：${CONDA_BIN}/activate"
+    echo "   可通过环境变量覆盖，例如：export CONDA_BIN=\"/your/path/to/anaconda3/bin\" CONDA_ENV=\"16s-env\""
+    exit 1
+fi
 
 INPUT_FILE=""
 THREADS="12"
 TEMP_FILE=""
 
+OUTPUT_DIR=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         -i|--input) INPUT_FILE="$2"; shift 2 ;;
         -n|--threads) THREADS="$2"; shift 2 ;;
+                -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+
         -h|--help)
             echo "用法：bash step3_phylogeny.sh -i <featureSeqs.qza|sequences.fasta> [-n threads]"
             echo ""
             echo "参数:"
             echo "  -i, --input      输入文件路径（支持 .qza 或 .fasta/.fa/.fna）"
             echo "  -n, --threads    线程数 (默认：12)"
+            echo "  -o, --output     输出目录"
+
             echo "  -h, --help       显示帮助"
             echo ""
             echo "输入格式支持："
@@ -68,10 +73,10 @@ elif [[ "${INPUT_FILE}" == *.fasta || "${INPUT_FILE}" == *.fa || "${INPUT_FILE}"
     echo "✅ 检测到 FASTA 格式，将转换为 QIIME2 qza..."
     
     # 激活 conda 环境
-    source "${CONDA_BIN}/activate" 16s-env
+    source "${CONDA_BIN}/activate" "${CONDA_ENV}"
     
     # 转换为 qza
-    "${QIIME_BIN}" tools import \
+    qiime tools import \
        --type 'FeatureData[Sequence]' \
        --input-format DNAFASTAFormat \
        --input-path "${INPUT_FILE}" \
@@ -92,6 +97,16 @@ else
     exit 1
 fi
 
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
+
+# ----- 路径转绝对路径（cd 输出目录前） -----
+INPUT_FILE="$(abs_path_file "${INPUT_FILE}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+cd "${OUTPUT_DIR}"
+
 echo ""
 echo "=========================================="
 echo "系统发育树构建"
@@ -106,12 +121,12 @@ echo ""
 
 # 激活 conda 环境（如果之前没激活）
 if [ "${INPUT_FORMAT}" != "fasta" ]; then
-    source "${CONDA_BIN}/activate" 16s-env
+    source "${CONDA_BIN}/activate" "${CONDA_ENV}"
 fi
 
 # Step 1: 多序列比对 + 构建进化树
 echo "[1/2] 多序列比对 (mafft) + 构建进化树 (fasttree)..."
-"${QIIME_BIN}" phylogeny align-to-tree-mafft-fasttree \
+qiime phylogeny align-to-tree-mafft-fasttree \
    --i-sequences "${REP_SEQ}" \
    --o-alignment aligned-rep-seqs.qza \
    --o-masked-alignment masked-aligned-rep-seqs.qza \
@@ -121,10 +136,10 @@ echo "[1/2] 多序列比对 (mafft) + 构建进化树 (fasttree)..."
 
 # Step 2: 导出 Newick 格式
 echo "[2/2] 导出 Newick 格式..."
-"${QIIME_BIN}" tools export \
+qiime tools export \
    --input-path rooted-tree.qza \
    --output-path rooted-tree_qza
-"${QIIME_BIN}" tools export \
+qiime tools export \
    --input-path unrooted-tree.qza \
    --output-path unrooted-tree_qza
 

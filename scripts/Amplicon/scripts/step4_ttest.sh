@@ -1,8 +1,11 @@
 #!/bin/bash
 # step4_ttest.sh - T 检验与 Wilcoxon 检验脚本
-# 用法：bash step4_ttest.sh -i <Relative/> -g <group.list> [--threshold <P 值>] [--method <t|wilcox>]
+# 用法：bash step4_ttest.sh -i <Relative/> -g <group.list> [--threshold <P 值>] [--method <t|wilcox>] -o <output_dir>
 
 set -e
+
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
 
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
@@ -29,12 +32,15 @@ GROUP_FILE=""
 THRESHOLD="0.05"
 METHOD="t"
 
+OUTPUT_DIR=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         -i|--input) INDIR="$2"; shift 2 ;;
         -g|--group) GROUP_FILE="$2"; shift 2 ;;
         --threshold) THRESHOLD="$2"; shift 2 ;;
         --method) METHOD="$2"; shift 2 ;;
+                -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+
         -h|--help)
             echo "用法：bash step4_ttest.sh -i <Relative/> -g <group.list> [--threshold <P 值>] [--method <t|wilcox>]"
             echo ""
@@ -43,6 +49,8 @@ while [[ $# -gt 0 ]]; do
             echo "  -g, --group      样本分组文件路径"
             echo "  --threshold      P 值阈值（默认：0.05）"
             echo "  --method         检验方法：t 或 wilcox（默认：t）"
+            echo "  -o, --output     输出目录"
+
             echo "  -h, --help       显示帮助"
             exit 0
             ;;
@@ -55,6 +63,17 @@ done
 [ -z "${GROUP_FILE}" ] && { echo "❌ 错误：必须提供 -g"; exit 1; }
 [ ! -d "${INDIR}" ] && { echo "❌ 错误：相对丰度表目录不存在：${INDIR}"; exit 1; }
 [ ! -f "${GROUP_FILE}" ] && { echo "❌ 错误：分组文件不存在：${GROUP_FILE}"; exit 1; }
+
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
+
+# ----- 路径转绝对路径（cd 输出目录前） -----
+INDIR="$(abs_path_dir "${INDIR}")"
+GROUP_FILE="$(abs_path_file "${GROUP_FILE}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+cd "${OUTPUT_DIR}"
 
 echo ""
 echo "=========================================="

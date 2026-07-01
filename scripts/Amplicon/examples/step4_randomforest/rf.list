@@ -1,4 +1,2 @@
-# Random Forest contrast list
-# Format: Group1<TAB>Group2
-D	DF
-Y	Z
+# Random Forest contrast (each group >= 15 samples)
+T100	T200

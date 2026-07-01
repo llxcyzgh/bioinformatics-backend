@@ -16,7 +16,7 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| genus.relative.xls | 属水平相对丰度表 | XLS | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_network3d/genus.relative.xls) |
+| genus.relative.xls | 属水平相对丰度表 | XLS | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_network3d/genus.relative.xls) |
 
 ---
 
@@ -37,14 +37,14 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_network3d.sh -i genus.relative.xls
-# 输出：map.txt, edgeplot.xls, node.xls
+bash ${AMPLICON_ROOT}/v2/scripts/step4_network3d.sh -i genus.relative.xls -o Network3D_Output/
+# 输出目录：Network3D_Output/；文件：map.txt, edgeplot.xls, node.xls
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_network3d.sh -i genus.relative.xls
-# 输出：map.txt, edgeplot.xls, node.xls, network3D.html
+bash ${AMPLICON_ROOT}/v2/scripts/step4_network3d.sh -i genus.relative.xls -o Network3D_Output/
+# 输出目录：Network3D_Output/；文件：map.txt, edgeplot.xls, node.xls, network3D.html
 ```
 
 ### 参数说明
@@ -53,6 +53,7 @@ bash ${AMPLICON_ROOT}/scripts/step4_network3d.sh -i genus.relative.xls
 |------|------|------|--------|------|
 | -i, --input | 属水平相对丰度表路径 | 是 | - | genus.relative.xls |
 | -n, --top-n | Top 物种数量 | 否 | 100 | 100 |
+| -o, --output | 输出目录 | 是 | - | Network3D_Output/ |
 
 ---
 
@@ -96,7 +97,7 @@ echo 'export RSCRIPT_BIN="/your/path/to/Rscript"' >> .env
 echo 'export NET_FILE_GENERATE_R="/your/path/to/net_file_generate.R"' >> .env
 echo 'export BAYES_NET_PLOT_R="/your/path/to/Bayes_net_plot.R"' >> .env
 source .env
-bash step4_network3d.sh ...
+bash step4_network3d.sh ... -o Network3D_Output/
 ```
 ---
 
@@ -118,10 +119,10 @@ bash step4_network3d.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step4_network3d.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step4_network3d.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step4_network3d/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step4_network3d.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step4_network3d.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step4_network3d/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

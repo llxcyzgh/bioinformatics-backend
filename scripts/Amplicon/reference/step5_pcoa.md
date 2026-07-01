@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **Tool Name** | pcoa |
-| **Description** | PCoA（Principal Co-ordinates Analysis）主坐标分析，基于 UniFrac 距离展示样本间的群落结构差异 |
+| **Description** | PCoA（Principal Co-ordinates Analysis）主坐标分析，基于 Beta 多样性距离展示样本间的群落结构差异 |
 | **适用范围** | 16S/18S/ITS 扩增子测序、微生物组 Beta 多样性排序分析 |
 | **估算机时** | 1.5 小时 |
 | **报价分数** | 2.7 |
@@ -16,22 +16,24 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| weighted_unifrac_pc.txt | Weighted UniFrac PCoA 坐标 | TSV | 16S | 细菌/古菌 | (${AMPLICON_ROOT}/examples/step5_pcoa/weighted_unifrac_pc.txt) |
-| unweighted_unifrac_pc.txt | Unweighted UniFrac PCoA 坐标 | TSV | 16S | 细菌/古菌 | (${AMPLICON_ROOT}/examples/step5_pcoa/unweighted_unifrac_pc.txt) |
-| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step5_pcoa/group.list) |
+| BetaData/ | step3_beta_data 输出目录（含 *_pcoa_results_qza/ordination.txt） | DIR | 16S/18S/ITS | 通用 | - |
+| ordination.txt | 单个距离的 PCoA ordination 文件 | TXT | 16S/18S/ITS | 通用 | unweighted_unifrac_pcoa_results_qza/ordination.txt |
+| *_pc.txt | 已整理的 PC 坐标（兼容旧用法） | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step5_pcoa/BetaData/weighted_unifrac_pcoa_results_qza/ordination.txt) |
+| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step5_pcoa/group.list) |
 
 ---
 
 ## 输出
 
+> 所有输出文件均写入 `-o` 指定的目录（下表路径相对于输出目录）。
+
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| PCoA.pdf | PCoA 合并排序图（PDF 格式） | PDF | 16S | 细菌/古菌 | - |
-| PCoA.png | PCoA 合并排序图（PNG 格式） | PNG | 16S | 细菌/古菌 | - |
-| weighted_unifrac/PCoA12.pdf | Weighted UniFrac PCoA 图 | PDF | 16S | 细菌/古菌 | - |
-| weighted_unifrac/PCoA12.png | Weighted UniFrac PCoA 图 | PNG | 16S | 细菌/古菌 | - |
-| unweighted_unifrac/PCoA12.pdf | Unweighted UniFrac PCoA 图 | PDF | 16S | 细菌/古菌 | - |
-| unweighted_unifrac/PCoA12.png | Unweighted UniFrac PCoA 图 | PNG | 16S | 细菌/古菌 | - |
+| {distance}/PCoA12.pdf | 各距离 PCoA 排序图 | PDF | 16S/18S/ITS | 通用 | weighted_unifrac/PCoA12.pdf |
+| {distance}/PCoA12.png | 各距离 PCoA 排序图 | PNG | 16S/18S/ITS | 通用 | weighted_unifrac/PCoA12.png |
+| {distance}/{distance}_pc.txt | 由 ordination.txt 导出的 PC 坐标 | TSV | 16S/18S/ITS | 通用 | weighted_unifrac/weighted_unifrac_pc.txt |
+
+`{distance}` 为所选距离：`unweighted_unifrac`、`weighted_unifrac`、`jaccard`、`bray_curtis`。各距离结果直接位于输出目录下以距离名命名的子目录中。
 
 ---
 
@@ -39,36 +41,66 @@
 
 ### 调用脚本 (推荐)
 
-**通用格式**：
+**示例 1**（BetaData 目录，默认 Weighted + Unweighted UniFrac）：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step5_pcoa.sh -w weighted_unifrac_pc.txt -wu unweighted_unifrac_pc.txt -g group.list
-# 输出：PCoA/PCoA.pdf, PCoA/weighted_unifrac/PCoA12.png 等
+bash ${AMPLICON_ROOT}/v2/scripts/step5_pcoa.sh \
+    -i BetaData/ \
+    -g group.list \
+    -o PCoA_Output/
 ```
 
-**示例**：
+**示例 2**（选择特定距离）：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step5_pcoa.sh -w weighted_unifrac_pc.txt -wu unweighted_unifrac_pc.txt -g group.list
-# 输出：PCoA/PCoA.pdf, PCoA/PCoA.png, PCoA/weighted_unifrac/PCoA12.pdf 等
+bash ${AMPLICON_ROOT}/v2/scripts/step5_pcoa.sh \
+    -i BetaData/ \
+    -d weighted_unifrac,jaccard \
+    -g group.list \
+    -o PCoA_Output/
+# 等价于 -d w,j
 ```
+
+**示例 3**（单个 ordination.txt）：
+```bash
+bash ${AMPLICON_ROOT}/v2/scripts/step5_pcoa.sh \
+    -i BetaData/unweighted_unifrac_pcoa_results_qza/ordination.txt \
+    -g group.list \
+    -o PCoA_Output/
+```
+
+**示例 4**（兼容旧用法：直接传入 pc 坐标文件）：
+```bash
+bash ${AMPLICON_ROOT}/v2/scripts/step5_pcoa.sh \
+    -w weighted_unifrac_pc.txt \
+    -wu unweighted_unifrac_pc.txt \
+    -g group.list \
+    -o PCoA_Output/
+```
+
+### 参数说明
 
 | 参数 | 说明 | 必需 | 默认值 | 示例 |
 |------|------|------|--------|------|
-| -w, --weighted | Weighted UniFrac PCoA 坐标路径 | 是 | - | weighted_unifrac_pc.txt |
-| -wu, --unweighted | Unweighted UniFrac PCoA 坐标路径 | 是 | - | unweighted_unifrac_pc.txt |
+| -i, --input | BetaData/ 目录或 ordination.txt | 与 -w/-wu 二选一 | - | BetaData/ |
+| -d, --distances | 距离类型，逗号分隔 | 否 | unweighted_unifrac,weighted_unifrac | w,j |
 | -g, --group | 样本分组文件路径 | 是 | - | group.list |
+| -w, --weighted | weighted_unifrac_pc.txt（旧用法） | 否 | - | weighted_unifrac_pc.txt |
+| -wu, --unweighted | unweighted_unifrac_pc.txt（旧用法） | 否 | - | unweighted_unifrac_pc.txt |
+| -o, --output | 输出目录 | 是 | - | PCoA_Output/ |
+
+**可选距离**：`unweighted_unifrac(wu)`、`weighted_unifrac(w)`、`jaccard(j)`、`bray_curtis(bc)`
 
 ---
 
 ## 流程步骤
 
 ```
-1️⃣ color_defined.pl（自动生成 group_col.list 分组颜色配置）
+0️⃣ color_defined.pl（由 group.list 自动生成 group_col.list）
    ↓
-2️⃣ plot_PCoA.R（绘制 Weighted UniFrac PCoA 图）
+1️⃣ pcoa.pl（从 ordination.txt 导出 {distance}_pc.txt）
    ↓
-3️⃣ plot_PCoA.R（绘制 Unweighted UniFrac PCoA 图）
+2️⃣ plot_PCoA.R（在各距离目录下绘制 PCoA 图）
    ↓
-4️⃣ convert（合并两张 PCoA 图）
+3️⃣ convert（PDF → PNG 转换，各距离目录内）
 ```
 
 ---
@@ -82,6 +114,7 @@ Sample002\tGroupA
 Sample003\tGroupB
 Sample004\tGroupB
 ```
+
 ---
 
 ## 环境配置
@@ -92,23 +125,21 @@ Sample004\tGroupB
 - **Rscript**: `/gfs/softwares/R/3.6.3/bin/Rscript`
 - **convert**: `/usr/bin/convert` (ImageMagick)
 - **perl**: `/usr/bin/perl`
+- **pcoa.pl**: `/newVol/users/guorongjun/work/Pipline/Amplicon_pipeline/Amplicon_pipeline_V1.0/lib/03.ASV/betaAnalysis/pcoa.pl`
 - **plot_PCoA.R**: `/newVol/users/guorongjun/work/Pipline/Amplicon_pipeline/Amplicon_pipeline_V1.0/lib/05.Diversity_analysis/lib/PCoA/plot_PCoA.R`
 - **color_defined.pl**: `/newVol/users/guorongjun/work/Pipline/Amplicon_pipeline/Amplicon_pipeline_V1.0/lib/00.Commbin/color_defined.pl`
 
 ### 自定义路径（迁移环境时）
 
-如果软件路径不同，可通过环境变量覆盖：
-
-**配置文件**
 ```bash
-# 创建 .env 文件
 echo 'export RSCRIPT_BIN="/your/path/to/Rscript"' > .env
 echo 'export CONVERT_BIN="/your/path/to/convert"' >> .env
 echo 'export PERL_BIN="/your/path/to/perl"' >> .env
+echo 'export PCOA_PL="/your/path/to/pcoa.pl"' >> .env
 echo 'export PCOA_R_PL="/your/path/to/plot_PCoA.R"' >> .env
 echo 'export COLOR_DEFINED_PL="/your/path/to/color_defined.pl"' >> .env
 source .env
-bash step5_pcoa.sh ...
+bash step5_pcoa.sh ... -o PCoA_Output/
 ```
 
 ---
@@ -117,7 +148,8 @@ bash step5_pcoa.sh ...
 
 | 工具 | 输出文件 | 说明 |
 |------|----------|------|
-| Beta 多样性计算 | weighted_unifrac_pc.txt, unweighted_unifrac_pc.txt | PCoA 坐标数据 |
+| step3_beta_data | BetaData/*_pcoa_results_qza/ordination.txt | PCoA ordination 坐标 |
+| step3_upgma | PCoA_data/*_pc.txt | PC 坐标（可选，旧流程） |
 | step3_table_stats | group.list | 样本分组信息 |
 
 ---
@@ -132,10 +164,10 @@ bash step5_pcoa.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step5_pcoa.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step5_pcoa.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step5_pcoa/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step5_pcoa.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step5_pcoa.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step5_pcoa/`
 
 ---
 
-最后更新：2026-04-16
+最后更新：2026-06-24

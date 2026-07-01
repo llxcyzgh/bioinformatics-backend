@@ -16,8 +16,8 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| featureTable.biom | ASV 丰度表（BIOM 格式） | BIOM | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step3_feature_tables/asv_table.txt) |
-| all_tax_assignments.txt | 物种注释结果 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step3_feature_tables/all_tax_assignments.txt) |
+| featureTable.biom | ASV 丰度表（BIOM 格式） | BIOM | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step3_feature_tables/featureTable.biom) |
+| all_tax_assignments.txt | 物种注释结果 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step3_feature_tables/all_tax_assignments.txt) |
 
 ---
 
@@ -25,7 +25,7 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| asv_table.txt | 标准化 ASV 特征表 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step3_table_stats/asv_table.txt) |
+| asv_table.txt | 标准化 ASV 特征表 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step3_table_stats/asv_table.txt) |
 | featureTaxonomy.biom | 带物种注释的 BIOM 表 | BIOM | 16S/18S/ITS | 通用 | - |
 
 ---
@@ -34,14 +34,14 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_feature_tables.sh -i featureTable.biom -t all_tax_assignments.txt
-# 输出：asv_table.txt, featureTaxonomy.biom
+bash ${AMPLICON_ROOT}/v2/scripts/step3_feature_tables.sh -i featureTable.biom -t all_tax_assignments.txt -o FeatureTables_Output/
+# 输出目录：FeatureTables_Output/；文件：asv_table.txt, featureTaxonomy.biom
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_feature_tables.sh -i featureTable.biom -t all_tax_assignments.txt
-# 输出：asv_table.txt, featureTaxonomy.biom
+bash ${AMPLICON_ROOT}/v2/scripts/step3_feature_tables.sh -i featureTable.biom -t all_tax_assignments.txt -o FeatureTables_Output/
+# 输出目录：FeatureTables_Output/；文件：asv_table.txt, featureTaxonomy.biom
 ```
 
 ### 参数说明
@@ -50,6 +50,7 @@ bash ${AMPLICON_ROOT}/scripts/step3_feature_tables.sh -i featureTable.biom -t al
 |------|------|------|--------|------|
 | -i, --input | BIOM 格式特征表路径 | 是 | - | featureTable.biom |
 | -t, --taxonomy | 物种注释文件路径 | 是 | - | all_tax_assignments.txt |
+| -o, --output | 输出目录 | 是 | - | FeatureTables_Output/ |
 
 ---
 
@@ -93,7 +94,7 @@ ASV1	7446	7723	4762	...	k__Bacteria;p__Bacteroidota;c__Bacteroidia;...
 echo 'export CONDA_BIN="/your/path/to/conda"' > .env
 echo 'export BIOM_BIN="/your/path/to/biom"' >> .env
 source .env
-bash step3_feature_tables.sh ...
+bash step3_feature_tables.sh ... -o FeatureTables_Output/
 ```
 
 ---
@@ -117,10 +118,10 @@ bash step3_feature_tables.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step3_feature_tables.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step3_feature_tables.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step3_feature_tables/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step3_feature_tables.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step3_feature_tables.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step3_feature_tables/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

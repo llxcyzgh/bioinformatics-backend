@@ -1,28 +1,37 @@
-# PCoA 示例数据
+# step5_pcoa 示例数据
 
-## 数据来源
+## 输入文件
 
-- `weighted_unifrac_pc.txt`: `${AMPLICON_ROOT}/examples/step5_pcoa/weighted_unifrac_pc.txt`
-- `unweighted_unifrac_pc.txt`: `${AMPLICON_ROOT}/examples/step5_pcoa/unweighted_unifrac_pc.txt`
-- `group.list`: `${AMPLICON_ROOT}/examples/step5_pcoa/group.list`
+| 文件/目录 | 说明 | 是否必需 |
+|-----------|------|----------|
+| `BetaData/` | 含 `*_pcoa_results_qza/ordination.txt`（来自 step3_beta_data） | **推荐**（`-i`） |
+| `group.list` | 样本分组 | **必需**（`-g`） |
+
+> **不需要** `*_dm.txt`（距离矩阵属于 `step5_beta_div.sh` / `step4_catecomp.sh`）。  
+> **不需要** `group_col.list`（脚本内自动调用 `color_defined.pl` 生成）。
 
 ## 测试命令
 
 ```bash
-cd "${AMPLICON_ROOT}/examples/step5_pcoa"
-bash "${AMPLICON_ROOT}/scripts/step5_pcoa.sh" -w weighted_unifrac_pc.txt -wu unweighted_unifrac_pc.txt -g group.list
+# 推荐：传入 BetaData 目录
+bash "${AMPLICON_ROOT}/v2/scripts/step5_pcoa.sh" \
+    -i "${AMPLICON_ROOT}/v2/examples/step5_pcoa/BetaData/" \
+    -g "${AMPLICON_ROOT}/v2/examples/step5_pcoa/group.list" \
+    -o PCoA_Output/
+
+# 指定距离
+bash "${AMPLICON_ROOT}/v2/scripts/step5_pcoa.sh" \
+    -i "${AMPLICON_ROOT}/v2/examples/step5_pcoa/BetaData/" \
+    -d weighted_unifrac,jaccard \
+    -g "${AMPLICON_ROOT}/v2/examples/step5_pcoa/group.list" \
+    -o PCoA_Output/
 ```
+
+## 示例来源
+
+- `BetaData/*/ordination.txt` 复制自：`/grj/BioAgent/test/BetaData/`
+- `group.list` 复制自：`/grj/BioAgent/test/group.list`
 
 ## 输出
 
-- `PCoA/PCoA.pdf`: PCoA 合并排序图（PDF 格式）
-- `PCoA/PCoA.png`: PCoA 合并排序图（PNG 格式）
-- `PCoA/weighted_unifrac/PCoA12.pdf`: Weighted UniFrac PCoA 图
-- `PCoA/weighted_unifrac/PCoA12.png`: Weighted UniFrac PCoA 图
-- `PCoA/unweighted_unifrac/PCoA12.pdf`: Unweighted UniFrac PCoA 图
-- `PCoA/unweighted_unifrac/PCoA12.png`: Unweighted UniFrac PCoA 图
-
-## 说明
-
-- 分组颜色配置（group_col.list）由脚本内部自动调用 `color_defined.pl` 生成
-- 无需手动提供 group_col.list 文件
+- `{distance}/PCoA12.pdf`、`{distance}/PCoA12.png`（如 `weighted_unifrac/PCoA12.pdf`）

@@ -32,6 +32,9 @@ Thumbs.db
 # Uploaded scripts（运行时上传存储，不入库；种子脚本 scripts/Amplicon 等仍跟踪）
 scripts/uploaded/
 
+# v1 旧脚本库归档（已被 Amplicon_v2 取代，本地保留一个周期，不入库；v1 可从 git 历史恢复）
+scripts/Amplicon_v1_archive/
+
 # Ad-hoc test scripts
 test_playwright.py
 *.log

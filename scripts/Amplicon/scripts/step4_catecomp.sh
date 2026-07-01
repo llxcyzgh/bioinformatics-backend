@@ -1,8 +1,11 @@
 #!/bin/bash
 # step4_catecomp.sh - 分类比较统计检验脚本
-# 用法：bash step4_catecomp.sh -t <asv_table.even.txt> -g <group.list> [-u <unweighted.dm>] [-w <weighted.dm>]
+# 用法：bash step4_catecomp.sh -t <asv_table.even.txt> -g <group.list> [-u <unweighted.dm>] [-w <weighted.dm>] -o <output_dir>
 
 set -e
+
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
 
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
@@ -17,11 +20,18 @@ if [ -n "${MODULE_ENV_FILE}" ] && [ -f "${MODULE_ENV_FILE}" ]; then
     source "${MODULE_ENV_FILE}"
 fi
 
-# 验证软件存在
-for bin in PERL_BIN CATEGORISE_COMPAIR_PL COLOR_DEFINED_PL TAB_JS_PL; do
+# 验证软件存在（perl 脚本用 -f，可执行程序用 -x）
+for bin in PERL_BIN; do
     if [ ! -x "${!bin}" ]; then
         echo "❌ 错误：${bin} 不存在：${!bin}"
         echo "   可通过环境变量覆盖，例如：export ${bin}=\"/your/path/to/${bin}\""
+        exit 1
+    fi
+done
+for pl in CATEGORISE_COMPAIR_PL COLOR_DEFINED_PL TAB_JS_PL; do
+    if [ ! -f "${!pl}" ]; then
+        echo "❌ 错误：${pl} 不存在：${!pl}"
+        echo "   可通过环境变量覆盖，例如：export ${pl}=\"/your/path/to/${pl}\""
         exit 1
     fi
 done
@@ -31,12 +41,15 @@ GROUP_FILE=""
 UNWEIGHTED_DM=""
 WEIGHTED_DM=""
 
+OUTPUT_DIR=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         -t|--table) ASV_TABLE="$2"; shift 2 ;;
         -g|--group) GROUP_FILE="$2"; shift 2 ;;
         -u|--unweighted) UNWEIGHTED_DM="$2"; shift 2 ;;
         -w|--weighted) WEIGHTED_DM="$2"; shift 2 ;;
+                -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+
         -h|--help)
             echo "用法：bash step4_catecomp.sh -t <asv_table.even.txt> -g <group.list> [-u <unweighted.dm>] [-w <weighted.dm>]"
             echo ""
@@ -45,6 +58,8 @@ while [[ $# -gt 0 ]]; do
             echo "  -g, --group       样本分组文件路径"
             echo "  -u, --unweighted  Unweighted UniFrac 距离矩阵路径（可选）"
             echo "  -w, --weighted    Weighted UniFrac 距离矩阵路径（可选）"
+            echo "  -o, --output     输出目录"
+
             echo "  -h, --help        显示帮助"
             exit 0
             ;;
@@ -57,6 +72,19 @@ done
 [ -z "${GROUP_FILE}" ] && { echo "❌ 错误：必须提供 -g"; exit 1; }
 [ ! -f "${ASV_TABLE}" ] && { echo "❌ 错误：ASV 表不存在：${ASV_TABLE}"; exit 1; }
 [ ! -f "${GROUP_FILE}" ] && { echo "❌ 错误：分组文件不存在：${GROUP_FILE}"; exit 1; }
+
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
+
+# ----- 路径转绝对路径（cd 输出目录前） -----
+ASV_TABLE="$(abs_path_file "${ASV_TABLE}")"
+GROUP_FILE="$(abs_path_file "${GROUP_FILE}")"
+UNWEIGHTED_DM="$(abs_path_file_optional "${UNWEIGHTED_DM}")"
+WEIGHTED_DM="$(abs_path_file_optional "${WEIGHTED_DM}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+cd "${OUTPUT_DIR}"
 
 echo ""
 echo "=========================================="

@@ -16,10 +16,10 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| featureTable.biom 或 featureTable.tsv | ASV 丰度表（BIOM 或 TSV 格式） | BIOM/TSV | 16S/18S/ITS | 细菌/古菌 | (${AMPLICON_ROOT}/examples/step4_funpre/featureTable.biom) |
-| feature.fasta | ASV 代表序列 | FASTA | 16S/18S/ITS | 细菌/古菌 | (${AMPLICON_ROOT}/examples/step4_funpre/feature.fasta) |
-| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_funpre/group.list) |
-| venng.list | 功能维恩图分组列表 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_funpre/venng.list) |
+| featureTable.biom 或 featureTable.tsv | ASV 丰度表（BIOM 或 TSV 格式） | BIOM/TSV | 16S/18S/ITS | 细菌/古菌 | (${AMPLICON_ROOT}/v2/examples/step3_convert_table/featureTable.biom) |
+| feature.fasta | ASV 代表序列 | FASTA | 16S/18S/ITS | 细菌/古菌 | (${AMPLICON_ROOT}/v2/examples/step4_funpre/feature.fasta) |
+| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_funpre/group.list) |
+| venng.list | 功能维恩图分组列表 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_funpre/venng.list) |
 
 **注**：
 - 支持 `.biom`、`.tsv`、`.txt` 格式的丰度表输入
@@ -43,21 +43,21 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_funpre.sh -b featureTable.biom -s feature.fasta [-g group.list] [-v venng.list]
-# 输出：EC_metagenome_out/, KO_metagenome_out/, pathways_out/
+bash ${AMPLICON_ROOT}/v2/scripts/step4_funpre.sh -b featureTable.biom -s feature.fasta [-g group.list] [-v venng.list] -o FunPre_Output/
+# 输出目录：FunPre_Output/；文件：EC_metagenome_out/, KO_metagenome_out/, pathways_out/
 ```
 
 **示例 1**：BIOM 格式输入
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_funpre.sh -b featureTable.biom -s feature.fasta -g group.list -v venng.list
-# 输出：EC_metagenome_out/, KO_metagenome_out/, pathways_out/, fun_venn_group/
+bash ${AMPLICON_ROOT}/v2/scripts/step4_funpre.sh -b featureTable.biom -s feature.fasta -g group.list -v venng.list -o FunPre_Output/
+# 输出目录：FunPre_Output/；文件：EC_metagenome_out/, KO_metagenome_out/, pathways_out/, fun_venn_group/
 ```
 
 **示例 2**：TSV 格式输入（自动转换）
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_funpre.sh -b featureTable.tsv -s feature.fasta -g group.list -v venng.list
+bash ${AMPLICON_ROOT}/v2/scripts/step4_funpre.sh -b featureTable.tsv -s feature.fasta -g group.list -v venng.list -o FunPre_Output/
 # 自动转换：featureTable.tsv → featureTable.biom
-# 输出：EC_metagenome_out/, KO_metagenome_out/, pathways_out/, fun_venn_group/
+# 输出目录：FunPre_Output/；文件：EC_metagenome_out/, KO_metagenome_out/, pathways_out/, fun_venn_group/
 ```
 
 ### 参数说明
@@ -68,6 +68,7 @@ bash ${AMPLICON_ROOT}/scripts/step4_funpre.sh -b featureTable.tsv -s feature.fas
 | -s, --seqs | ASV 代表序列（FASTA） | 是 | - | feature.fasta |
 | -g, --group | 样本分组文件路径 | 否 | - | group.list |
 | -v, --venn | 功能维恩图分组列表路径 | 否 | - | venng.list |
+| -o, --output | 输出目录 | 是 | - | FunPre_Output/ |
 
 ---
 
@@ -143,7 +144,7 @@ echo 'export PERL_BIN="/your/path/to/perl"' > .env
 echo 'export BIOM_BIN="/your/path/to/biom"' >> .env
 echo 'export PICRUSt2_PL="/your/path/to/PICRUSt2.pl"' >> .env
 source .env
-bash step4_funpre.sh ...
+bash step4_funpre.sh ... -o FunPre_Output/
 ```
 
 ---
@@ -170,10 +171,10 @@ bash step4_funpre.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step4_funpre.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step4_funpre.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step4_funpre/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step4_funpre.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step4_funpre.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step4_funpre/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

@@ -16,8 +16,8 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| ${sample}_R1.fastq.gz | 正向测序文件 (双端) | FASTQ.GZ | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step1_flash/CKM031_R1.fastq.gz) |
-| ${sample}_R2.fastq.gz | 反向测序文件 (双端) | FASTQ.GZ | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step1_flash/CKM031_R2.fastq.gz) |
+| ${sample}_R1.fastq.gz | 正向测序文件 (双端) | FASTQ.GZ | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step1_flash/T1001_R1.fastq.gz) |
+| ${sample}_R2.fastq.gz | 反向测序文件 (双端) | FASTQ.GZ | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step1_flash/T1001_R2.fastq.gz) |
 
 ---
 
@@ -38,26 +38,27 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step1_flash.sh -1 ${sample}_R1.fastq.gz -2 ${sample}_R2.fastq.gz -m <min_overlap> -M <max_overlap> -x <max_ratio>
-# 输出：${sample}.out.extendedFrags.fastq, ${sample}.notCombined_1.fastq, ${sample}.notCombined_2.fastq, ${sample}.flash.log
+bash ${AMPLICON_ROOT}/v2/scripts/step1_flash.sh -1 ${sample}_R1.fastq.gz -2 ${sample}_R2.fastq.gz -m <min_overlap> -M <max_overlap> -x <max_ratio> -o Flash_Output/
+# 输出目录：Flash_Output/；文件：${sample}.out.extendedFrags.fastq, ${sample}.notCombined_1.fastq, ${sample}.notCombined_2.fastq, ${sample}.flash.log
 ```
 
 **示例**（16S V3-V4）：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step1_flash.sh -1 CKM031_R1.fastq.gz -2 CKM031_R2.fastq.gz -m 10 -M 150 -x 0.1
-# 输出：CKM031.out.extendedFrags.fastq, CKM031.notCombined_1.fastq, CKM031.notCombined_2.fastq, CKM031.flash.log
+bash ${AMPLICON_ROOT}/v2/scripts/step1_flash.sh -1 T1001_R1.fastq.gz -2 T1001_R2.fastq.gz -m 10 -M 150 -x 0.1 -o Flash_Output/
+# 输出目录：Flash_Output/；文件：CKM031.out.extendedFrags.fastq, CKM031.notCombined_1.fastq, CKM031.notCombined_2.fastq, CKM031.flash.log
 ```
 
 ### 参数说明
 
 | 参数 | 说明 | 必需 | 默认值 | 示例 |
 |------|------|------|--------|------|
-| -1, --r1 | R1 测序文件路径 | 是 | - | CKM031_R1.fastq.gz |
-| -2, --r2 | R2 测序文件路径 | 是 | - | CKM031_R2.fastq.gz |
+| -1, --r1 | R1 测序文件路径 | 是 | - | T1001_R1.fastq.gz |
+| -2, --r2 | R2 测序文件路径 | 是 | - | T1001_R2.fastq.gz |
 | -m, --min-overlap | 最小重叠长度 | 否 | 10 | 10 |
 | -M, --max-overlap | 最大重叠长度 | 否 | 250 | 150 |
 | -x, --max-ratio | 最大错误率 | 否 | 0.1 | 0.1 |
 | -t, --threads | 线程数 | 否 | 1 | 12 |
+| -o, --output | 输出目录 | 是 | - | Flash_Output/ |
 
 ---
 
@@ -96,16 +97,16 @@ bash ${AMPLICON_ROOT}/scripts/step1_flash.sh -1 CKM031_R1.fastq.gz -2 CKM031_R2.
 # 创建 .env 文件
 echo 'export FLASH_BIN="/your/path/to/flash"' > .env
 source .env
-bash step1_flash.sh ...
+bash step1_flash.sh ... -o Flash_Output/
 ```
 
 ---
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step1_flash.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step1_flash.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step1_flash/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step1_flash.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step1_flash.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step1_flash/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

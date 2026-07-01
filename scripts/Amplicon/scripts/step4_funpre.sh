@@ -1,14 +1,19 @@
 #!/bin/bash
 # step4_funpre.sh - PICRUSt2 功能预测分析脚本
-# 用法：bash step4_funpre.sh -b <featureTable.biom|featureTable.tsv> -s <feature.fasta> [-g <group.list>] [-v <venng.list>]
+# 用法：bash step4_funpre.sh -b <featureTable.biom|featureTable.tsv> -s <feature.fasta> [-g <group.list>] [-v <venng.list>] -o <output_dir>
 
 set -e
+
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
 
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
 PERL_BIN="${PERL_BIN:-/usr/bin/perl}"
+CONDA_BIN="${CONDA_BIN:-/software/anaconda3/bin}"
+CONDA_ENV="${CONDA_ENV:-16s-env}"
+COLOR_DEFINED_PL="${COLOR_DEFINED_PL:-/newVol/users/guorongjun/work/Pipline/Amplicon_pipeline/Amplicon_pipeline_V1.0/lib/00.Commbin/color_defined.pl}"
 PICRUSt2_PL="${PICRUSt2_PL:-/newVol/users/guorongjun/work/Pipline/Amplicon_pipeline/Amplicon_pipeline_V1.0/lib/04.Taxa_visualization/lib/Funnction_prediction/PICRUSt2/PICRUSt2.pl}"
-BIOM_BIN="${BIOM_BIN:-/software/anaconda3/envs/16s-env/bin/biom}"
 
 # 如果设置了 MODULE_ENV_FILE，先加载配置文件
 if [ -n "${MODULE_ENV_FILE}" ] && [ -f "${MODULE_ENV_FILE}" ]; then
@@ -17,25 +22,36 @@ if [ -n "${MODULE_ENV_FILE}" ] && [ -f "${MODULE_ENV_FILE}" ]; then
 fi
 
 # 验证软件存在
-for bin in PERL_BIN PICRUSt2_PL BIOM_BIN; do
+for bin in PERL_BIN; do
     if [ ! -x "${!bin}" ]; then
         echo "❌ 错误：${bin} 不存在：${!bin}"
-        echo "   可通过环境变量覆盖，例如：export ${bin}=\"/your/path/to/${bin}\""
         exit 1
     fi
 done
+if [ ! -f "${PICRUSt2_PL}" ]; then
+    echo "❌ 错误：PICRUSt2_PL 不存在：${PICRUSt2_PL}"
+    exit 1
+fi
+if [ ! -f "${CONDA_BIN}/activate" ]; then
+    echo "❌ 错误：CONDA activate 不存在：${CONDA_BIN}/activate"
+    echo "   可通过环境变量覆盖，例如：export CONDA_BIN=\"/your/path/to/anaconda3/bin\" CONDA_ENV=\"16s-env\""
+    exit 1
+fi
 
 INPUT_TABLE=""
 REP_SEQS=""
 GROUP_LIST=""
 VENNG_LIST=""
 
+OUTPUT_DIR=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         -b|--biom) INPUT_TABLE="$2"; shift 2 ;;
         -s|--seqs) REP_SEQS="$2"; shift 2 ;;
         -g|--group) GROUP_LIST="$2"; shift 2 ;;
         -v|--venn) VENNG_LIST="$2"; shift 2 ;;
+                -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+
         -h|--help)
             echo "用法：bash step4_funpre.sh -b <featureTable.biom|featureTable.tsv> -s <feature.fasta> [-g <group.list>] [-v <venng.list>]"
             echo ""
@@ -44,6 +60,8 @@ while [[ $# -gt 0 ]]; do
             echo "  -s, --seqs     ASV 代表序列（FASTA）"
             echo "  -g, --group    样本分组文件路径（可选）"
             echo "  -v, --venn     功能维恩图分组列表路径（可选）"
+            echo "  -o, --output     输出目录"
+
             echo "  -h, --help     显示帮助"
             echo ""
             echo "说明:"
@@ -60,6 +78,19 @@ done
 [ ! -f "${INPUT_TABLE}" ] && { echo "❌ 错误：输入文件不存在：${INPUT_TABLE}"; exit 1; }
 [ ! -f "${REP_SEQS}" ] && { echo "❌ 错误：序列文件不存在：${REP_SEQS}"; exit 1; }
 
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
+
+# ----- 路径转绝对路径（cd 输出目录前） -----
+INPUT_TABLE="$(abs_path_file "${INPUT_TABLE}")"
+REP_SEQS="$(abs_path_file "${REP_SEQS}")"
+GROUP_LIST="$(abs_path_file_optional "${GROUP_LIST}")"
+VENNG_LIST="$(abs_path_file_optional "${VENNG_LIST}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+cd "${OUTPUT_DIR}"
+
 echo ""
 echo "=========================================="
 echo "PICRUSt2 功能预测分析"
@@ -73,8 +104,8 @@ if [[ "${INPUT_TABLE}" == *.tsv || "${INPUT_TABLE}" == *.txt ]]; then
     echo "🔄 转换 TSV → BIOM..."
     BIOM_TABLE="featureTable.biom"
     
-    # 使用 biom convert 转换
-    "${BIOM_BIN}" convert \
+    source "${CONDA_BIN}/activate" "${CONDA_ENV}"
+    biom convert \
         -i "${INPUT_TABLE}" \
         -o "${BIOM_TABLE}" \
         --to-json \
@@ -100,21 +131,32 @@ if [ -n "${VENNG_LIST}" ] && [ -f "${VENNG_LIST}" ]; then
 fi
 echo ""
 
+# 提供分组文件时：生成 group_col.list（PICRUSt2 PCA 必需）
+GROUP_COL_LIST=""
+if [ -n "${GROUP_LIST}" ] && [ -f "${GROUP_LIST}" ]; then
+    if [ ! -f "${COLOR_DEFINED_PL}" ]; then
+        echo "❌ 错误：COLOR_DEFINED_PL 不存在：${COLOR_DEFINED_PL}"
+        echo "   可通过环境变量覆盖，例如：export COLOR_DEFINED_PL=\"/your/path/to/color_defined.pl\""
+        exit 1
+    fi
+    echo "[0/6] 生成颜色配置文件..."
+    GROUP_COL_LIST="group_col.list"
+    "${PERL_BIN}" "${COLOR_DEFINED_PL}" "${GROUP_LIST}" "${GROUP_COL_LIST}"
+    echo "  ✅ 颜色配置文件已生成：${GROUP_COL_LIST}"
+    echo "  📝 分组数量：$(wc -l < "${GROUP_COL_LIST}")"
+    echo ""
+fi
+
 # Step 1: 构建 PICRUSt2.pl 命令参数
 PICRUSt_ARGS="--otu_biom ${BIOM_TABLE} --rep_seq ${REP_SEQS}"
 
 # 添加可选参数
 if [ -n "${GROUP_LIST}" ] && [ -f "${GROUP_LIST}" ]; then
-    PICRUSt_ARGS="${PICRUSt_ARGS} --grouplist ${GROUP_LIST}"
-    # 自动生成 group_col.list（如果存在 group.list）
-    GROUP_COL_LIST="group_col.list"
-    if [ -f "${GROUP_COL_LIST}" ]; then
-        PICRUSt_ARGS="${PICRUSt_ARGS} --group_col ${GROUP_COL_LIST}"
-    fi
+    PICRUSt_ARGS="${PICRUSt_ARGS} --grouplist ${GROUP_LIST} --group_col ${GROUP_COL_LIST} --Group"
 fi
 
 if [ -n "${VENNG_LIST}" ] && [ -f "${VENNG_LIST}" ]; then
-    PICRUSt_ARGS="${PICRUSt_ARGS} --fun_venn_group ${VENNG_LIST} --Group"
+    PICRUSt_ARGS="${PICRUSt_ARGS} --fun_venn_group ${VENNG_LIST}"
 fi
 
 # Step 2: 执行 PICRUSt2.pl

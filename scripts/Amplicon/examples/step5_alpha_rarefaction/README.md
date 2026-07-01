@@ -2,27 +2,30 @@
 
 ## 输入文件
 
--  - 均一化 ASV 表（7.9K）
--  - 样本元数据文件（20 个样本）
--  - 样本分组文件（20 个样本）
--  - 分组颜色配置（可选）
--  - Alpha 多样性指数（从 step3_alpha_data 输出）
+- `asv_table.even.txt` - 均一化 ASV 表
+- `group.list` - 样本分组
+- `alpha_index_table/observed_features.csv` - 运行前复制到输出目录（来自 step3_alpha_data）
+
+> **不需要**在示例目录放置 `alpha.mf`、`group_col.list`（脚本未要求；颜色配置在输出目录内自动生成）。
 
 ## 测试命令
 
+```bash
+# 方式 1：将 alpha_index_table 复制到输出目录后运行
+OUT=AlphaRarefaction_Output
+mkdir -p "${OUT}"
+cp -r "${AMPLICON_ROOT}/v2/examples/step5_alpha_rarefaction/alpha_index_table" "${OUT}/"
 
-
-## 输出
-
--  - Rank Abundance 曲线
--  - Observed Features 稀化曲线
--  - Alpha 多样性合并图
--  - 分组稀化曲线
--  - 分组 Alpha 多样性合并图
--  - 分组 ASV 表
+bash "${AMPLICON_ROOT}/v2/scripts/step5_alpha_rarefaction.sh" \
+    -t "${AMPLICON_ROOT}/v2/examples/step5_alpha_rarefaction/asv_table.even.txt" \
+    -g "${AMPLICON_ROOT}/v2/examples/step5_alpha_rarefaction/group.list" \
+    -o "${OUT}/"
+```
 
 ## 示例来源
 
-- 输入：
-- 输入：
-- 输出：
+- `alpha_index_table/observed_features.csv` 由 `/grj/BioAgent/test/AlphaData/alpha_index_table/observed_features_qza/alpha-diversity.tsv` 转换
+
+## 输出
+
+- `rank_abundance.svg/png`、`observed_features.svg/png`、`alpha_diversity.svg/png` 等

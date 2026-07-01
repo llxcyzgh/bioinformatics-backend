@@ -16,7 +16,9 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|------|
-| asv_table.even.txt | 均一化 ASV 表 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step3_alpha_data/asv_table.even.txt) |
+| asv_table.even.txt | 均一化 ASV 表 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step3_convert_table/asv_table.even.txt) |
+| rooted-tree.qza | 有根系统发育树（稀化曲线可选） | QZA | 16S/18S/ITS | 通用 | - |
+| alpha.mf | 样本元数据文件（稀化曲线可选；表头：`#SampleID	Description`） | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step3_alpha_data/alpha.mf) |
 
 ---
 
@@ -27,6 +29,7 @@
 | alpha_index_table/alpha_diversity_index.txt | 综合 Alpha 指数表 | TXT | 16S/18S/ITS | 通用 | - |
 | alpha_index_table/*.qza | Alpha 多样性指数 | QZA | 16S/18S/ITS | 通用 | - |
 | alpha_rarefaction.qzv | Alpha 稀化曲线可视化 | QZV | 16S/18S/ITS | 通用 | - |
+| metadata.qiime.mf | 补全表头后的元数据（仅当输入缺少表头时生成） | TSV | 16S/18S/ITS | 通用 | - |
 
 ---
 
@@ -36,20 +39,20 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_alpha_data.sh -i asv_table.even.txt [-t rooted-tree.qza] [-m alpha.mf]
-# 输出：alpha_index_table/*.qza, alpha_diversity_index.txt, alpha_rarefaction.qzv
+bash ${AMPLICON_ROOT}/v2/scripts/step3_alpha_data.sh -i asv_table.even.txt [-t rooted-tree.qza] [-m alpha.mf] -o AlphaData_Output/
+# 输出目录：AlphaData_Output/；文件：alpha_index_table/*.qza, alpha_diversity_index.txt, alpha_rarefaction.qzv
 ```
 
 **示例 1**：仅计算 Alpha 指数
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_alpha_data.sh -i asv_table.even.txt
-# 输出：alpha_index_table/chao1.qza, alpha_index_table/shannon.qza, ..., alpha_diversity_index.txt
+bash ${AMPLICON_ROOT}/v2/scripts/step3_alpha_data.sh -i asv_table.even.txt -o AlphaData_Output/
+# 输出目录：AlphaData_Output/；文件：alpha_index_table/chao1.qza, alpha_index_table/shannon.qza, ..., alpha_diversity_index.txt
 ```
 
 **示例 2**：计算 Alpha 指数 + 稀化曲线
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_alpha_data.sh -i asv_table.even.txt -t rooted-tree.qza -m alpha.mf
-# 输出：alpha_index_table/*.qza, alpha_diversity_index.txt, alpha_rarefaction.qzv
+bash ${AMPLICON_ROOT}/v2/scripts/step3_alpha_data.sh -i asv_table.even.txt -t rooted-tree.qza -m alpha.mf -o AlphaData_Output/
+# 输出目录：AlphaData_Output/；文件：alpha_index_table/*.qza, alpha_diversity_index.txt, alpha_rarefaction.qzv
 ```
 
 ### 参数说明
@@ -58,7 +61,20 @@ bash ${AMPLICON_ROOT}/scripts/step3_alpha_data.sh -i asv_table.even.txt -t roote
 |------|------|------|--------|------|
 | -i, --input | 均一化 ASV 表路径 | 是 | - | asv_table.even.txt |
 | -t, --tree | 有根系统发育树路径 | 否 | - | rooted-tree.qza |
-| -m, --meta | 样本元数据文件路径 | 否 | - | alpha.mf |
+| -m, --meta | 样本元数据文件路径（稀化曲线可选；需含 `#SampleID	Description` 表头，缺失时自动补全） | 否 | - | alpha.mf |
+| -o, --output | 输出目录 | 是 | - | AlphaData_Output/ |
+
+### 元数据格式（alpha.mf）
+
+QIIME2 要求元数据首行为 `#SampleID	Description`（Tab 分隔）。脚本在生成稀化曲线前会自动检测：若缺少该表头，会在输出目录生成 `metadata.qiime.mf` 并补全表头后再分析。
+
+```
+#SampleID	Description
+D1	D
+D2	D
+Y.K1	Y
+...
+```
 
 ---
 
@@ -122,7 +138,7 @@ echo 'export CONDA_BIN="/your/path/to/conda"' > .env
 echo 'export QIIME_BIN="/your/path/to/qiime"' >> .env
 echo 'export BIOM_BIN="/your/path/to/biom"' >> .env
 source .env
-bash step3_alpha_data.sh ...
+bash step3_alpha_data.sh ... -o AlphaData_Output/
 ```
 
 ---
@@ -147,10 +163,10 @@ bash step3_alpha_data.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step3_alpha_data.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step3_alpha_data.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step3_alpha_data/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step3_alpha_data.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step3_alpha_data.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step3_alpha_data/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

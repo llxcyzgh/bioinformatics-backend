@@ -2,23 +2,27 @@
 
 ## 输入文件
 
--  - Alpha 多样性指数表（5 个样本，7 个指数）
--  - 样本分组文件（5 个样本）
--  - 分组颜色配置（2 个分组）
+- `alpha_diversity_index.txt` - Alpha 多样性指数表（12 样本）
+- `group.list` - 样本分组
 
 ## 测试命令
 
-
-
-## 输出
-
--  - ANOVA 检验结果
--  - Observed Features 蜜蜂群图
--  - Shannon 指数蜜蜂群图
--  - Alpha 多样性差异合并图
+```bash
+bash "${AMPLICON_ROOT}/v2/scripts/step5_alpha_div.sh" \
+    -i "${AMPLICON_ROOT}/v2/examples/step5_alpha_div/alpha_diversity_index.txt" \
+    -g "${AMPLICON_ROOT}/v2/examples/step5_alpha_div/group.list" \
+    -o AlphaDiv_Output/
+```
 
 ## 示例来源
 
-- 输入：
-- 输入：
-- 输出：
+- `alpha_diversity_index.txt`：`/grj/BioAgent/test/AlphaData/alpha_index_table/`
+- `group.list`：`/grj/BioAgent/test/group.list`
+
+## 说明
+
+- `group_col.list` 由脚本内自动生成。
+
+## 输出
+
+- `anova_test.txt`、`beeswarm/`、`alpha_diff.svg/png`

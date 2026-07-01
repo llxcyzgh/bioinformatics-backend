@@ -2,29 +2,32 @@
 
 ## 输入文件
 
-- `Relative/` - 各分类层级相对丰度表目录（7 个文件，84K）
-  - `asv_table.k.relative.xls` - 界水平（1.4K）
-  - `asv_table.p.relative.xls` - 门水平（9.0K）
-  - `asv_table.c.relative.xls` - 纲水平（12K）
-  - `asv_table.o.relative.xls` - 目水平（14K）
-  - `asv_table.f.relative.xls` - 科水平（14K）
-  - `asv_table.g.relative.xls` - 属水平（14K）
-  - `asv_table.s.relative.xls` - 种水平（6.9K）
-- `group.list` - 样本分组文件（212B, 20 个样本）
+| 文件/目录 | 说明 |
+|-----------|------|
+| `Relative/` | 各分类层级相对丰度表（8 个 `.xls`） |
+| `asv_table.even.txt` | 均一化 ASV 表（脚本内自动生成 `Relative/`） |
+| `group.list` | 样本分组（12 样本） |
 
 ## 测试命令
 
 ```bash
-cd "${AMPLICON_ROOT}/examples/step4_simper"
-bash "${AMPLICON_ROOT}/scripts/step4_simper.sh" -i Relative/ -g group.list
+# 方式 1：Relative 目录
+bash "${AMPLICON_ROOT}/v2/scripts/step4_simper.sh" \
+    -i "${AMPLICON_ROOT}/v2/examples/step4_simper/Relative/" \
+    -g "${AMPLICON_ROOT}/v2/examples/step4_simper/group.list" \
+    -o Simper_Output/
+
+# 方式 2：均一化 ASV 表
+bash "${AMPLICON_ROOT}/v2/scripts/step4_simper.sh" \
+    -i "${AMPLICON_ROOT}/v2/examples/step4_simper/asv_table.even.txt" \
+    -g "${AMPLICON_ROOT}/v2/examples/step4_simper/group.list" \
+    -o Simper_Output/
 ```
-
-## 输出
-
-- `*/simper_*.txt` - SIMPER 分析结果（6 个分类层级）
 
 ## 示例来源
 
-- 输入：`${AMPLICON_ROOT}/examples/step4_simper/Relative/`
-- 输入：`${AMPLICON_ROOT}/examples/step4_simper/group.list`
-- 输出：`${AMPLICON_ROOT}/examples/step4_simper/`（或由 `-o` 指定）
+- 复制自：`/grj/BioAgent/test/TableStats/`
+
+## 输出
+
+- `{level}/simper_*.txt`、`{level}/*.png/pdf`

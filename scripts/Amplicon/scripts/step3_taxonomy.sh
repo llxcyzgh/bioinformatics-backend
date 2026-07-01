@@ -1,13 +1,16 @@
 #!/bin/bash
 # step3_taxonomy.sh - 物种注释脚本
-# 用法：bash step3_taxonomy.sh -i <featureSeqs.qza|sequences.fasta> -t <16S|18S|ITS> [-p threads]
+# 用法：bash step3_taxonomy.sh -i <featureSeqs.qza|sequences.fasta> -t <16S|18S|ITS> [-p threads] -o <output_dir>
 
 set -e
 
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
+
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
-CONDA_BIN="${CONDA_BIN:-/software/anaconda3/bin/conda}"
-QIIME_BIN="${QIIME_BIN:-/software/anaconda3/envs/16s-env/bin/qiime}"
+CONDA_BIN="${CONDA_BIN:-/software/anaconda3/bin}"
+CONDA_ENV="${CONDA_ENV:-16s-env}"
 
 # 参考数据库路径（支持环境变量覆盖）
 # 16S 数据库
@@ -28,25 +31,24 @@ if [ -n "${MODULE_ENV_FILE}" ] && [ -f "${MODULE_ENV_FILE}" ]; then
     source "${MODULE_ENV_FILE}"
 fi
 
-# 验证软件存在
-for bin in CONDA_BIN QIIME_BIN; do
-    if [ ! -x "${!bin}" ]; then
-        echo "❌ 错误：${bin} 不存在：${!bin}"
-        echo "   可通过环境变量覆盖，例如：export ${bin}=\"/your/path/to/${bin}\""
-        exit 1
-    fi
-done
+if [ ! -f "${CONDA_BIN}/activate" ]; then
+    echo "❌ 错误：CONDA activate 不存在：${CONDA_BIN}/activate"
+    echo "   可通过环境变量覆盖，例如：export CONDA_BIN=\"/your/path/to/anaconda3/bin\" CONDA_ENV=\"16s-env\""
+    exit 1
+fi
 
 INPUT_FILE=""
 AMP_TYPE="16S"
 THREADS="16"
 TEMP_FILE=""
+OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         -i|--input) INPUT_FILE="$2"; shift 2 ;;
         -t|--type) AMP_TYPE="$2"; shift 2 ;;
         -p|--threads) THREADS="$2"; shift 2 ;;
+        -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
         -h|--help)
             echo "用法：bash step3_taxonomy.sh -i <featureSeqs.qza|sequences.fasta> -t <16S|18S|ITS> [-p threads]"
             echo ""
@@ -54,6 +56,8 @@ while [[ $# -gt 0 ]]; do
             echo "  -i, --input      输入文件路径（支持 .qza 或 .fasta/.fa/.fna）"
             echo "  -t, --type       扩增子类型 (16S、18S 或 ITS，默认：16S)"
             echo "  -p, --threads    线程数 (默认：16)"
+            echo "  -o, --output     输出目录"
+
             echo "  -h, --help       显示帮助"
             echo ""
             echo "输入格式支持："
@@ -73,6 +77,15 @@ done
 [ -z "${INPUT_FILE}" ] && { echo "❌ 错误：必须提供 -i"; exit 1; }
 [ ! -f "${INPUT_FILE}" ] && { echo "❌ 错误：输入文件不存在：${INPUT_FILE}"; exit 1; }
 
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
+# ----- 路径转绝对路径（cd 输出目录前） -----
+INPUT_FILE="$(abs_path_file "${INPUT_FILE}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+cd "${OUTPUT_DIR}"
+
 # ===== 自动检测输入格式并转换 =====
 INPUT_FORMAT=""
 if [[ "${INPUT_FILE}" == *.qza ]]; then
@@ -84,14 +97,14 @@ elif [[ "${INPUT_FILE}" == *.fasta || "${INPUT_FILE}" == *.fa || "${INPUT_FILE}"
     echo "✅ 检测到 FASTA 格式，将转换为 QIIME2 qza..."
     
     # 激活 conda 环境
-    source "${CONDA_BIN}/activate" 16s-env
+    source "${CONDA_BIN}/activate" "${CONDA_ENV}"
     
     # 转换为 qza
-    "${QIIME_BIN}" tools import \
+    qiime tools import \
        --type 'FeatureData[Sequence]' \
        --input-format DNAFASTAFormat \
        --input-path "${INPUT_FILE}" \
-       --output-path featureSeqs_temp.qza
+       --output-path "${OUTPUT_DIR}/featureSeqs_temp.qza"
     
     # 验证转换结果
     if [ ! -f "featureSeqs_temp.qza" ]; then
@@ -100,8 +113,8 @@ elif [[ "${INPUT_FILE}" == *.fasta || "${INPUT_FILE}" == *.fa || "${INPUT_FILE}"
     fi
     
     echo "✅ 转换完成：${INPUT_FILE} → featureSeqs_temp.qza"
-    REP_SEQ="featureSeqs_temp.qza"
-    TEMP_FILE="featureSeqs_temp.qza"  # 标记为临时文件
+    REP_SEQ="${OUTPUT_DIR}/featureSeqs_temp.qza"
+    TEMP_FILE="${OUTPUT_DIR}/featureSeqs_temp.qza"  # 标记为临时文件
 else
     echo "❌ 错误：不支持的文件格式：${INPUT_FILE}"
     echo "   支持的格式：.qza, .fasta, .fa, .fna"
@@ -130,9 +143,6 @@ if [ ! -f "${REF_TAX}" ]; then
     exit 1
 fi
 
-# 获取输出目录（输入文件所在目录）
-OUTPUT_DIR="$(cd "$(dirname "${INPUT_FILE}")" && pwd)"
-
 echo ""
 echo "=========================================="
 echo "物种注释"
@@ -151,12 +161,12 @@ echo ""
 
 # 激活 conda 环境（如果之前没激活）
 if [ "${INPUT_FORMAT}" != "fasta" ]; then
-    source "${CONDA_BIN}/activate" 16s-env
+    source "${CONDA_BIN}/activate" "${CONDA_ENV}"
 fi
 
 # Step 1: VSEARCH 比对
 echo "[1/3] VSEARCH 比对..."
-"${QIIME_BIN}" feature-classifier classify-consensus-vsearch \
+qiime feature-classifier classify-consensus-vsearch \
    --i-query "${REP_SEQ}" \
    --p-threads ${THREADS} \
    --i-reference-reads "${REF_SEQ}" \
@@ -166,7 +176,7 @@ echo "[1/3] VSEARCH 比对..."
 
 # Step 2: 导出结果
 echo "[2/3] 导出结果..."
-"${QIIME_BIN}" tools export \
+qiime tools export \
    --input-path seq_taxonomy.qza \
    --output-path seq_taxonomy_qza
 
@@ -188,8 +198,6 @@ sed -i '2,$s/#//g;2,$s/://g' seq_taxonomy_qza/taxonomy.tsv
 # 创建符号链接
 ln -sf seq_taxonomy_qza/taxonomy.tsv all_tax_assignments.txt
 
-# 移动文件到输出目录
-mv seq_taxonomy_qza/taxonomy.tsv taxonomy.tsv
 
 # 清理临时文件
 if [ -n "${TEMP_FILE}" ]; then

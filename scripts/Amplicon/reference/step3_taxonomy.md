@@ -16,7 +16,7 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|------|
-| featureSeqs.qza | ASV 代表序列（QIIME2） | QZA | 16S/18S/ITS | 通用 | - |
+| featureSeqs.qza / feature.fasta | ASV 代表序列（QIIME2 或 FASTA） | QZA/FASTA | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step3_taxonomy/feature.fasta) |
 
 ---
 
@@ -35,21 +35,21 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_taxonomy.sh -i <输入文件> -t <16S|18S|ITS> -p <threads>
-# 输出：seq_taxonomy.qza, taxonomy.tsv, all_tax_assignments.txt
+bash ${AMPLICON_ROOT}/v2/scripts/step3_taxonomy.sh -i <输入文件> -t <16S|18S|ITS> -p <threads> -o Taxonomy_Output/
+# 输出目录：Taxonomy_Output/；文件：seq_taxonomy.qza, taxonomy.tsv, all_tax_assignments.txt
 ```
 
 **示例 1**：使用 step3_dada2 输出（qza 格式）
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_taxonomy.sh -i featureSeqs.qza -t 16S -p 16
-# 输出：seq_taxonomy.qza, taxonomy.tsv, all_tax_assignments.txt
+bash ${AMPLICON_ROOT}/v2/scripts/step3_taxonomy.sh -i featureSeqs.qza -t 16S -p 16 -o Taxonomy_Output/
+# 输出目录：Taxonomy_Output/；文件：seq_taxonomy.qza, taxonomy.tsv, all_tax_assignments.txt
 ```
 
 **示例 2**：使用用户提供的 FASTA 文件
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step3_taxonomy.sh -i ASV_representative_sequences.fasta -t 16S -p 16
+bash ${AMPLICON_ROOT}/v2/scripts/step3_taxonomy.sh -i ASV_representative_sequences.fasta -t 16S -p 16 -o Taxonomy_Output/
 # 自动转换：ASV_representative_sequences.fasta → featureSeqs_temp.qza
-# 输出：seq_taxonomy.qza, taxonomy.tsv, all_tax_assignments.txt
+# 输出目录：Taxonomy_Output/；文件：seq_taxonomy.qza, taxonomy.tsv, all_tax_assignments.txt
 ```
 ### 参数说明
 
@@ -58,6 +58,7 @@ bash ${AMPLICON_ROOT}/scripts/step3_taxonomy.sh -i ASV_representative_sequences.
 | -i, --input | 输入文件路径（.qza 或 .fasta/.fa/.fna） | 是 | - | featureSeqs.qza 或 sequences.fasta |
 | -t, --type | 扩增子类型 | 是 | 16S | 16S、18S 或 ITS |
 | -p, --threads | 线程数 | 否 | 16 | 16 |
+| -o, --output | 输出目录 | 是 | - | Taxonomy_Output/ |
 
 ---
 
@@ -137,7 +138,7 @@ echo 'export SILVA_18S_TAX="/your/path/to/silva_Eukaryota.taxonmy.qza"' >> .env
 echo 'export UNITE_SEQ="/your/path/to/unitev9.0_seq_99.qza"' >> .env
 echo 'export UNITE_TAX="/your/path/to/unitev9.0_tax_99.qza"' >> .env
 source .env
-bash step3_taxonomy.sh ...
+bash step3_taxonomy.sh ... -o Taxonomy_Output/
 ```
 ---
 
@@ -160,10 +161,10 @@ bash step3_taxonomy.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step3_taxonomy.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step3_taxonomy.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step3_taxonomy/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step3_taxonomy.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step3_taxonomy.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step3_taxonomy/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

@@ -16,9 +16,8 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| asv_table.even.txt | 均一化 ASV 表 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step5_alpha_rarefaction/asv_table.even.txt) |
-| alpha.mf | 样本元数据文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step5_alpha_rarefaction/alpha.mf) |
-| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step5_alpha_rarefaction/group.list) |
+| asv_table.even.txt | 均一化 ASV 表 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step5_alpha_rarefaction/asv_table.even.txt) |
+| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step5_alpha_rarefaction/group.list) |
 
 ---
 
@@ -42,14 +41,14 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step5_alpha_rarefaction.sh -t asv_table.even.txt -m alpha.mf -g group.list
-# 输出：rank_abundance.svg/png, observed_features.svg/png, alpha_diversity.svg/png, ...
+bash ${AMPLICON_ROOT}/v2/scripts/step5_alpha_rarefaction.sh -t asv_table.even.txt -g group.list -o AlphaRarefaction_Output/
+# 输出目录：AlphaRarefaction_Output/；文件：rank_abundance.svg/png, observed_features.svg/png, alpha_diversity.svg/png, ...
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step5_alpha_rarefaction.sh -t asv_table.even.txt -m alpha.mf -g group.list
-# 输出：rank_abundance.svg/png, observed_features.svg/png, alpha_diversity.svg/png, observed_features.group.svg/png, alpha_diversity.group.svg/png
+bash ${AMPLICON_ROOT}/v2/scripts/step5_alpha_rarefaction.sh -t asv_table.even.txt -g group.list -o AlphaRarefaction_Output/
+# 输出目录：AlphaRarefaction_Output/；文件：rank_abundance.svg/png, observed_features.svg/png, alpha_diversity.svg/png, observed_features.group.svg/png, alpha_diversity.group.svg/png
 ```
 
 ### 参数说明
@@ -57,8 +56,8 @@ bash ${AMPLICON_ROOT}/scripts/step5_alpha_rarefaction.sh -t asv_table.even.txt -
 | 参数 | 说明 | 必需 | 默认值 | 示例 |
 |------|------|------|--------|------|
 | -t, --table | 均一化 ASV 表路径 | 是 | - | asv_table.even.txt |
-| -m, --meta | 样本元数据文件路径 | 是 | - | alpha.mf |
 | -g, --group | 样本分组文件路径 | 是 | - | group.list |
+| -o, --output | 输出目录 | 是 | - | AlphaRarefaction_Output/ |
 
 ---
 
@@ -79,9 +78,11 @@ bash ${AMPLICON_ROOT}/scripts/step5_alpha_rarefaction.sh -t asv_table.even.txt -
    ↓
 7️⃣ line_errbar.R（绘制分组误差线图）
    ↓
-8️⃣ rank_abundance_group.R（绘制分组 Rank Abundance 曲线）
+8️⃣ Combine_otutable.pl（按 group.list 生成分组 ASV 表）
    ↓
-9️⃣ convert（合并分组图片）
+9️⃣ rank_abundance_group.R（绘制分组 Rank Abundance 曲线）
+   ↓
+🔟 convert（合并分组图片）
 ```
 
 ---
@@ -141,7 +142,7 @@ echo 'export RANK_ABUNDANCE_GROUP_R="/your/path/to/rank_abundance_group.R"' >> .
 echo 'export COMBINE_OTUTABLE_PL="/your/path/to/Combine_otutable.pl"' >> .env
 echo 'export COLOR_DEFINED_PL="/your/path/to/color_defined.pl"' >> .env
 source .env
-bash step5_alpha_rarefaction.sh ...
+bash step5_alpha_rarefaction.sh ... -o AlphaRarefaction_Output/
 ```
 ---
 
@@ -149,9 +150,7 @@ bash step5_alpha_rarefaction.sh ...
 
 | 工具 | 输出文件 | 说明 |
 |------|----------|------|
-| step3_table_stats | asv_table.even.txt | 均一化 ASV 表 |
-| step1_data_split | alpha.mf | 样本元数据文件 |
-| step3_table_stats | group.list | 样本分组信息 |
+| step3_table_stats | asv_table.even.txt, group.list | 均一化 ASV 表与样本分组信息 |
 
 ---
 
@@ -166,10 +165,10 @@ bash step5_alpha_rarefaction.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step5_alpha_rarefaction.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step5_alpha_rarefaction.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step5_alpha_rarefaction/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step5_alpha_rarefaction.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step5_alpha_rarefaction.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step5_alpha_rarefaction/`
 
 ---
 
-最后更新：2026-04-16
+最后更新：2026-06-24

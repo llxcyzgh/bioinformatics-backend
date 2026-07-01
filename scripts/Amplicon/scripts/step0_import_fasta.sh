@@ -4,6 +4,24 @@
 
 set -e
 
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
+
+# ===== 软件路径（支持环境变量覆盖）=====
+CONDA_BIN="${CONDA_BIN:-/software/anaconda3/bin}"
+CONDA_ENV="${CONDA_ENV:-16s-env}"
+
+if [ -n "${MODULE_ENV_FILE}" ] && [ -f "${MODULE_ENV_FILE}" ]; then
+    echo "📖 加载配置文件：${MODULE_ENV_FILE}"
+    source "${MODULE_ENV_FILE}"
+fi
+
+if [ ! -f "${CONDA_BIN}/activate" ]; then
+    echo "❌ 错误：CONDA activate 不存在：${CONDA_BIN}/activate"
+    echo "   可通过环境变量覆盖，例如：export CONDA_BIN=\"/your/path/to/anaconda3/bin\" CONDA_ENV=\"16s-env\""
+    exit 1
+fi
+
 FASTA_FILE=""
 OUTPUT_DIR=""
 SEQ_TYPE="FeatureData[Sequence]"
@@ -63,6 +81,11 @@ fi
 # 创建输出目录
 # ==========================================
 
+# ----- 路径转绝对路径（cd 输出目录前） -----
+FASTA_FILE="$(abs_path_file "${FASTA_FILE}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
 mkdir -p "${OUTPUT_DIR}"
 
 # ==========================================
@@ -70,13 +93,7 @@ mkdir -p "${OUTPUT_DIR}"
 # ==========================================
 
 echo "📥 激活 QIIME2 环境..."
-if [ -f /software/anaconda3/bin/activate ]; then
-    source /software/anaconda3/bin/activate 16s-env
-elif command -v conda &> /dev/null; then
-    conda activate 16s-env
-else
-    echo "⚠️  未找到 QIIME2 环境，请确保已安装并激活 16s-env"
-fi
+source "${CONDA_BIN}/activate" "${CONDA_ENV}"
 
 # ==========================================
 # 导入 FASTA 为 QIIME2 格式
@@ -111,7 +128,4 @@ echo "=========================================="
 echo ""
 echo "📁 输出目录：${OUTPUT_DIR}"
 echo "📊 输出文件：${OUTPUT_DIR}/${BASENAME}.qza"
-echo ""
-echo "🔗 下一步："
-echo "   物种注释：bash step3_taxonomy.sh -i ${BASENAME}.qza -o Taxonomy_Output/ -t 16S"
 echo ""

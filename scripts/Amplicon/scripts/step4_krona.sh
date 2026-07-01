@@ -1,8 +1,11 @@
 #!/bin/bash
 # step4_krona.sh - Krona 交互式物种组成可视化脚本
-# 用法：bash step4_krona.sh -t <asv_table.even.txt> [-o <output_dir>]
+# 用法：bash step4_krona.sh -t <asv_table.even.txt> -o <output_dir>
 
 set -e
+
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
 
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
@@ -26,18 +29,18 @@ for bin in PERL_BIN IMPORT_RDP_PL; do
 done
 
 ASV_TABLE=""
-OUTPUT_NAME="krona"
+OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         -t|--table) ASV_TABLE="$2"; shift 2 ;;
-        -o|--output) OUTPUT_NAME="$2"; shift 2 ;;
+        -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
         -h|--help)
-            echo "用法：bash step4_krona.sh -t <asv_table.even.txt> [-o <output_dir>]"
+            echo "用法：bash step4_krona.sh -t <asv_table.even.txt> -o <output_dir>"
             echo ""
             echo "参数:"
             echo "  -t, --table    均一化 ASV 表路径"
-            echo "  -o, --output   输出目录名称（默认：krona）"
+            echo "  -o, --output   输出目录"
             echo "  -h, --help     显示帮助"
             exit 0
             ;;
@@ -49,6 +52,15 @@ done
 [ -z "${ASV_TABLE}" ] && { echo "❌ 错误：必须提供 -t"; exit 1; }
 [ ! -f "${ASV_TABLE}" ] && { echo "❌ 错误：ASV 表不存在：${ASV_TABLE}"; exit 1; }
 
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
+# ----- 路径转绝对路径（cd 输出目录前） -----
+ASV_TABLE="$(abs_path_file "${ASV_TABLE}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+cd "${OUTPUT_DIR}"
+
 echo ""
 echo "=========================================="
 echo "Krona 交互式物种组成可视化"
@@ -56,7 +68,7 @@ echo "=========================================="
 echo ""
 
 echo "📊 输入文件：${ASV_TABLE}"
-echo "📊 输出目录：${OUTPUT_NAME}"
+echo "📊 输出目录：${OUTPUT_DIR}"
 echo ""
 
 # Step 1: 生成 krona.html

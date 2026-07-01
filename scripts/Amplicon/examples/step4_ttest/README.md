@@ -2,27 +2,23 @@
 
 ## 输入文件
 
--  - 各分类层级相对丰度表目录（7 个文件，84K）
-  -  - 界水平（1.4K）
-  -  - 门水平（9.0K）
-  -  - 纲水平（12K）
-  -  - 目水平（14K）
-  -  - 科水平（14K）
-  -  - 属水平（14K）
-  -  - 种水平（6.9K）
--  - 样本分组文件（212B, 20 个样本）
+- `Relative/` - 各分类层级相对丰度表（8 个 `.xls`）
+- `group.list` - 样本分组（12 样本，T100/T200/T109/T209）
 
 ## 测试命令
 
-
-
-## 输出
-
--  - T 检验结果（6 个分类层级）
--  - Wilcoxon 检验结果（6 个分类层级）
+```bash
+bash "${AMPLICON_ROOT}/v2/scripts/step4_ttest.sh" \
+    -i "${AMPLICON_ROOT}/v2/examples/step4_ttest/Relative/" \
+    -g "${AMPLICON_ROOT}/v2/examples/step4_ttest/group.list" \
+    --method wilcox \
+    -o Ttest_Output/
+```
 
 ## 示例来源
 
-- 输入：
-- 输入：
-- 输出：
+- 复制自：`/grj/BioAgent/test/TableStats/Relative/`
+
+## 输出
+
+- 各层级 T 检验 / Wilcoxon 结果与图

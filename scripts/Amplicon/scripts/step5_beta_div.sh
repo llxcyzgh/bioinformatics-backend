@@ -1,8 +1,11 @@
 #!/bin/bash
 # step5_beta_div.sh - Beta 多样性差异分析脚本
-# 用法：bash step5_beta_div.sh -u <unweighted_unifrac_dm.txt> -w <weighted_unifrac_dm.txt> -g <group.list>
+# 用法：bash step5_beta_div.sh -u <unweighted_unifrac_dm.txt> -w <weighted_unifrac_dm.txt> -g <group.list> -o <output_dir>
 
 set -e
+
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
 
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
@@ -39,11 +42,14 @@ UNWEIGHTED_DM=""
 WEIGHTED_DM=""
 GROUP_FILE=""
 
+OUTPUT_DIR=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         -u|--unweighted) UNWEIGHTED_DM="$2"; shift 2 ;;
         -w|--weighted) WEIGHTED_DM="$2"; shift 2 ;;
         -g|--group) GROUP_FILE="$2"; shift 2 ;;
+                -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+
         -h|--help)
             echo "用法：bash step5_beta_div.sh -u <unweighted_unifrac_dm.txt> -w <weighted_unifrac_dm.txt> -g <group.list>"
             echo ""
@@ -51,6 +57,8 @@ while [[ $# -gt 0 ]]; do
             echo "  -u, --unweighted  Unweighted UniFrac 距离矩阵路径"
             echo "  -w, --weighted    Weighted UniFrac 距离矩阵路径"
             echo "  -g, --group       样本分组文件路径"
+            echo "  -o, --output     输出目录"
+
             echo "  -h, --help        显示帮助"
             exit 0
             ;;
@@ -65,6 +73,18 @@ done
 [ ! -f "${UNWEIGHTED_DM}" ] && { echo "❌ 错误：Unweighted 距离矩阵不存在：${UNWEIGHTED_DM}"; exit 1; }
 [ ! -f "${WEIGHTED_DM}" ] && { echo "❌ 错误：Weighted 距离矩阵不存在：${WEIGHTED_DM}"; exit 1; }
 [ ! -f "${GROUP_FILE}" ] && { echo "❌ 错误：分组文件不存在：${GROUP_FILE}"; exit 1; }
+
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
+
+# ----- 路径转绝对路径（cd 输出目录前） -----
+UNWEIGHTED_DM="$(abs_path_file "${UNWEIGHTED_DM}")"
+WEIGHTED_DM="$(abs_path_file "${WEIGHTED_DM}")"
+GROUP_FILE="$(abs_path_file "${GROUP_FILE}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+cd "${OUTPUT_DIR}"
 
 echo ""
 echo "=========================================="

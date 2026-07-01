@@ -16,7 +16,7 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| ${sample}.extendedFrags.fastq | FLASH 拼接后的序列文件 | FASTQ | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step2_frags_qc/D1.extendedFrags.fastq.gz) |
+| ${sample}.extendedFrags.fastq | FLASH 拼接后的序列文件 | FASTQ | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step2_frags_qc/T1001.extendedFrags.fastq) |
 
 ---
 
@@ -39,14 +39,14 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step2_frags_qc.sh -i ${sample}.extendedFrags.fastq -q <quality> -u <max_n> -d <ref_db>
-# 输出：${sample}.fastq, ${sample}.fna, ${sample}.json, ${sample}.html, ${sample}.fna.histograms.png, ng_QC/
+bash ${AMPLICON_ROOT}/v2/scripts/step2_frags_qc.sh -i ${sample}.extendedFrags.fastq -q <quality> -u <max_n> -d <ref_db> -o Frags_QC_Output/
+# 输出目录：Frags_QC_Output/；文件：${sample}.fastq, ${sample}.fna, ${sample}.json, ${sample}.html, ${sample}.fna.histograms.png, ng_QC/
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step2_frags_qc.sh -i D1.extendedFrags.fastq -q 19 -u 15
-# 输出：D1.fastq, D1.fna, D1.json, D1.html, D1.fna.histograms.png, ng_QC/
+bash ${AMPLICON_ROOT}/v2/scripts/step2_frags_qc.sh -i D1.extendedFrags.fastq -q 19 -u 15 -o Frags_QC_Output/
+# 输出目录：Frags_QC_Output/；文件：D1.fastq, D1.fna, D1.json, D1.html, D1.fna.histograms.png, ng_QC/
 ```
 
 ### 参数说明
@@ -57,6 +57,7 @@ bash ${AMPLICON_ROOT}/scripts/step2_frags_qc.sh -i D1.extendedFrags.fastq -q 19 
 | -q, --quality | 质量阈值 | 否 | 19 | 19 |
 | -u, --max-n | 最大 N 比例 | 否 | 15 | 15 |
 | -d, --ref-db | 参考数据库（去嵌合体） | 否 | - | silva_Bac.Arc.fasta |
+| -o, --output | 输出目录 | 是 | - | Frags_QC_Output/ |
 
 ---
 
@@ -111,16 +112,16 @@ echo 'export FASTP_BIN="/your/path/to/fastp"' > .env
 echo 'export VSEARCH_BIN="/your/path/to/vsearch"' >> .env
 echo 'export NG_QC_BIN="/your/path/to/ng_QC"' >> .env
 source .env
-bash step2_frags_qc.sh ...
+bash step2_frags_qc.sh ... -o Frags_QC_Output/
 ```
 ---
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step2_frags_qc.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step2_frags_qc.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step2_frags_qc/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step2_frags_qc.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step2_frags_qc.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step2_frags_qc/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

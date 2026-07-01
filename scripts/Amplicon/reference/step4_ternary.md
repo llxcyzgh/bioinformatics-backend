@@ -16,8 +16,8 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| Relative_group/ | 分组相对丰度表目录 | DIR | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_ternary/Relative_group/) |
-| ternary.list | 三元相图分组列表 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_ternary/ternary.list) |
+| Relative_group/ | 分组相对丰度表目录 | DIR | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_ternary/Relative_group/) |
+| ternary.list | 三元相图分组列表 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_ternary/ternary.list) |
 
 ---
 
@@ -34,14 +34,14 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_ternary.sh -i Relative_group/ -l ternary.list
-# 输出：*.svg, *.png
+bash ${AMPLICON_ROOT}/v2/scripts/step4_ternary.sh -i Relative_group/ -l ternary.list -o Ternary_Output/
+# 输出目录：Ternary_Output/；文件：*.svg, *.png
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_ternary.sh -i Relative_group/ -l ternary.list
-# 输出：D_DF_Y.svg, D_DF_Y.png, Y_Z_D.svg, Y_Z_D.png
+bash ${AMPLICON_ROOT}/v2/scripts/step4_ternary.sh -i Relative_group/ -l ternary.list -o Ternary_Output/
+# 输出目录：Ternary_Output/；文件：D_DF_Y.svg, D_DF_Y.png, Y_Z_D.svg, Y_Z_D.png
 ```
 ### 参数说明
 
@@ -49,6 +49,7 @@ bash ${AMPLICON_ROOT}/scripts/step4_ternary.sh -i Relative_group/ -l ternary.lis
 |------|------|------|--------|------|
 | -i, --input | 分组相对丰度表目录路径 | 是 | - | Relative_group/ |
 | -l, --list | 三元相图分组列表路径 | 是 | - | ternary.list |
+| -o, --output | 输出目录 | 是 | - | Ternary_Output/ |
 
 ---
 
@@ -98,7 +99,7 @@ Y_Z_D
 echo 'export PERL_BIN="/your/path/to/perl"' > .env
 echo 'export TERNARYPLOT_PL="/your/path/to/ternaryplot.pl"' >> .env
 source .env
-bash step4_ternary.sh ...
+bash step4_ternary.sh ... -o Ternary_Output/
 ```
 
 ---
@@ -121,10 +122,10 @@ bash step4_ternary.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step4_ternary.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step4_ternary.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step4_ternary/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step4_ternary.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step4_ternary.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step4_ternary/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

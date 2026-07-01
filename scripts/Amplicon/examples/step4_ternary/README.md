@@ -2,24 +2,22 @@
 
 ## 输入文件
 
-- `Relative_group/` - 分组相对丰度表目录（7 个文件，84K）
-  - `asv_table.*.relative.xls` - 各分类层级（k/p/c/o/f/g/s）
-- `ternary.list` - 三元相图分组列表（70B, 2 组三元对比）
+- `Relative_group/` - 分组相对丰度表（6 个层级 `.xls`）
+- `ternary.list` - 三元对比列表（如 `T100_T200_T109`）
 
 ## 测试命令
 
 ```bash
-cd "${AMPLICON_ROOT}/examples/step4_ternary"
-bash "${AMPLICON_ROOT}/scripts/step4_ternary.sh" -i Relative_group/ -l ternary.list
+bash "${AMPLICON_ROOT}/v2/scripts/step4_ternary.sh" \
+    -i "${AMPLICON_ROOT}/v2/examples/step4_ternary/Relative_group/" \
+    -l "${AMPLICON_ROOT}/v2/examples/step4_ternary/ternary.list" \
+    -o Ternary_Output/
 ```
-
-## 输出
-
-- `*.svg` - 三元相图（SVG 格式）
-- `*.png` - 三元相图（PNG 格式）
 
 ## 示例来源
 
-- 输入：`${AMPLICON_ROOT}/examples/step4_ternary/Relative_group/`
-- 输入：`${AMPLICON_ROOT}/examples/step4_ternary/ternary.list`
-- 输出：`${AMPLICON_ROOT}/examples/step4_ternary/`（或由 `-o` 指定）
+- 复制自：`/grj/BioAgent/test/TableStats/Relative_group/`
+
+## 输出
+
+- `*.svg`、`*.png` 三元相图

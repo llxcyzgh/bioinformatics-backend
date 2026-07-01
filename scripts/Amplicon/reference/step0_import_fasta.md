@@ -14,9 +14,9 @@
 
 ## 输入
 
-| 文件 | 描述 | 格式 | 适用组学 | 适用物种 |
-|------|------|------|----------|----------|
-| `sequences.fasta` | FASTA 序列文件 | FASTA | 16S/18S/ITS | 通用 |
+| 文件 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
+|------|------|------|----------|----------|----------|
+| `sequences.fasta` | FASTA 序列文件 | FASTA | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step0_import_fasta/sequences.fasta) |
 
 ---
 
@@ -33,7 +33,7 @@
 ### 调用脚本（推荐）
 
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step0_import_fasta.sh \
+bash ${AMPLICON_ROOT}/v2/scripts/step0_import_fasta.sh \
     -i sequences.fasta \
     -o Import_Output/
 ```
@@ -64,12 +64,12 @@ bash ${AMPLICON_ROOT}/scripts/step0_import_fasta.sh \
 
 ```bash
 # Step 1: 导入为 QIIME2 格式
-bash ${AMPLICON_ROOT}/scripts/step0_import_fasta.sh \
+bash ${AMPLICON_ROOT}/v2/scripts/step0_import_fasta.sh \
     -i sequences.fasta \
     -o Import_Output/
 
 # Step 2: 物种注释
-bash ${AMPLICON_ROOT}/scripts/step3_taxonomy.sh \
+bash ${AMPLICON_ROOT}/v2/scripts/step3_taxonomy.sh \
     -i Import_Output/featureSeqs.qza \
     -o Taxonomy_Output/ \
     -t 16S \
@@ -80,7 +80,7 @@ bash ${AMPLICON_ROOT}/scripts/step3_taxonomy.sh \
 
 ```bash
 # 直接进行物种注释
-bash ${AMPLICON_ROOT}/scripts/step3_taxonomy.sh \
+bash ${AMPLICON_ROOT}/v2/scripts/step3_taxonomy.sh \
     -i featureSeqs.qza \
     -o Taxonomy_Output/ \
     -t 16S \
@@ -91,8 +91,8 @@ bash ${AMPLICON_ROOT}/scripts/step3_taxonomy.sh \
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step0_import_fasta.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step0_import_fasta.md`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step0_import_fasta.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step0_import_fasta.md`
 
 ---
 
@@ -106,4 +106,4 @@ bash ${AMPLICON_ROOT}/scripts/step3_taxonomy.sh \
 
 ---
 
-*最后更新：2026-04-13 | 扩增子智能体模块 v2.0*
+*最后更新：2026-06-24 | 扩增子智能体模块 v2.0*

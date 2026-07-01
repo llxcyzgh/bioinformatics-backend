@@ -16,9 +16,9 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| unweighted_unifrac_dm.txt | Unweighted UniFrac 距离矩阵 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step5_beta_div/unweighted_unifrac_dm.txt) |
-| weighted_unifrac_dm.txt | Weighted UniFrac 距离矩阵 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step5_beta_div/weighted_unifrac_dm.txt) |
-| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step5_beta_div/group.list) |
+| unweighted_unifrac_dm.txt | Unweighted UniFrac 距离矩阵 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step5_beta_div/unweighted_unifrac_dm.txt) |
+| weighted_unifrac_dm.txt | Weighted UniFrac 距离矩阵 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step5_beta_div/weighted_unifrac_dm.txt) |
+| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step5_beta_div/group.list) |
 
 ---
 
@@ -38,14 +38,14 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step5_beta_div.sh -u unweighted_unifrac_dm.txt -w weighted_unifrac_dm.txt -g group.list
-# 输出：unweighted_unifrac.svg/png, weighted_unifrac.svg/png, beta_diff.svg/png
+bash ${AMPLICON_ROOT}/v2/scripts/step5_beta_div.sh -u unweighted_unifrac_dm.txt -w weighted_unifrac_dm.txt -g group.list -o BetaDiv_Output/
+# 输出目录：BetaDiv_Output/；文件：unweighted_unifrac.svg/png, weighted_unifrac.svg/png, beta_diff.svg/png
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step5_beta_div.sh -u unweighted_unifrac_dm.txt -w weighted_unifrac_dm.txt -g group.list
-# 输出：unweighted_unifrac.svg/png, weighted_unifrac.svg/png, beta_diff.svg/png
+bash ${AMPLICON_ROOT}/v2/scripts/step5_beta_div.sh -u unweighted_unifrac_dm.txt -w weighted_unifrac_dm.txt -g group.list -o BetaDiv_Output/
+# 输出目录：BetaDiv_Output/；文件：unweighted_unifrac.svg/png, weighted_unifrac.svg/png, beta_diff.svg/png
 ```
 
 ### 参数说明
@@ -55,6 +55,7 @@ bash ${AMPLICON_ROOT}/scripts/step5_beta_div.sh -u unweighted_unifrac_dm.txt -w 
 | -u, --unweighted | Unweighted UniFrac 距离矩阵路径 | 是 | - | unweighted_unifrac_dm.txt |
 | -w, --weighted | Weighted UniFrac 距离矩阵路径 | 是 | - | weighted_unifrac_dm.txt |
 | -g, --group | 样本分组文件路径 | 是 | - | group.list |
+| -o, --output | 输出目录 | 是 | - | BetaDiv_Output/ |
 
 ---
 
@@ -111,7 +112,7 @@ echo 'export CONVERT_BIN="/your/path/to/convert"' >> .env
 echo 'export BETA_GROUP_TEST_PL="/your/path/to/Beta_group_test.pl"' >> .env
 echo 'export COLOR_DEFINED_PL="/your/path/to/color_defined.pl"' >> .env
 source .env
-bash step5_beta_div.sh ...
+bash step5_beta_div.sh ... -o BetaDiv_Output/
 ```
 
 ---
@@ -136,10 +137,10 @@ bash step5_beta_div.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step5_beta_div.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step5_beta_div.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step5_beta_div/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step5_beta_div.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step5_beta_div.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step5_beta_div/`
 
 ---
 
-最后更新：2026-04-16
+最后更新：2026-06-24

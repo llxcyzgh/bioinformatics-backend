@@ -16,10 +16,10 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| asv_table.even.txt | 均一化 ASV 表 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_catecomp/asv_table.even.txt) |
-| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_catecomp/group.list) |
-| unweighted_unifrac_dm.txt | Unweighted UniFrac 距离矩阵 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_catecomp/unweighted_unifrac_dm.txt) |
-| weighted_unifrac_dm.txt | Weighted UniFrac 距离矩阵 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_catecomp/weighted_unifrac_dm.txt) |
+| asv_table.even.txt | 均一化 ASV 表 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_catecomp/asv_table.even.txt) |
+| group.list | 样本分组文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_catecomp/group.list) |
+| unweighted_unifrac_dm.txt | Unweighted UniFrac 距离矩阵 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_catecomp/unweighted_unifrac_dm.txt) |
+| weighted_unifrac_dm.txt | Weighted UniFrac 距离矩阵 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_catecomp/weighted_unifrac_dm.txt) |
 
 **注**：距离矩阵文件为可选输入，如不提供则跳过相关分析。
 
@@ -46,14 +46,14 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_catecomp.sh -t asv_table.even.txt -g group.list [-u unweighted_unifrac_dm.txt] [-w weighted_unifrac_dm.txt]
-# 输出：Anosim/, MRPP/, Adonis/, Amova/
+bash ${AMPLICON_ROOT}/v2/scripts/step4_catecomp.sh -t asv_table.even.txt -g group.list [-u unweighted_unifrac_dm.txt] [-w weighted_unifrac_dm.txt] -o CateComp_Output/
+# 输出目录：CateComp_Output/；文件：Anosim/, MRPP/, Adonis/, Amova/
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_catecomp.sh -t asv_table.even.txt -g group.list -u unweighted_unifrac_dm.txt -w weighted_unifrac_dm.txt
-# 输出：Anosim/stat_anosim.txt, MRPP/stat_mrpp.txt, Adonis/bray_adonis.txt, Amova/stat_amova.txt
+bash ${AMPLICON_ROOT}/v2/scripts/step4_catecomp.sh -t asv_table.even.txt -g group.list -u unweighted_unifrac_dm.txt -w weighted_unifrac_dm.txt -o CateComp_Output/
+# 输出目录：CateComp_Output/；文件：Anosim/stat_anosim.txt, MRPP/stat_mrpp.txt, Adonis/bray_adonis.txt, Amova/stat_amova.txt
 ```
 
 ### 参数说明
@@ -64,6 +64,7 @@ bash ${AMPLICON_ROOT}/scripts/step4_catecomp.sh -t asv_table.even.txt -g group.l
 | -g, --group | 样本分组文件路径 | 是 | - | group.list |
 | -u, --unweighted | Unweighted UniFrac 距离矩阵路径 | 否 | - | unweighted_unifrac_dm.txt |
 | -w, --weighted | Weighted UniFrac 距离矩阵路径 | 否 | - | weighted_unifrac_dm.txt |
+| -o, --output | 输出目录 | 是 | - | CateComp_Output/ |
 
 ---
 
@@ -133,7 +134,7 @@ echo 'export CATEGORISE_COMPAIR_PL="/your/path/to/Categorise_compair.pl"' >> .en
 echo 'export TAB_JS_PL="/your/path/to/tab_js.pl"' >> .env
 echo 'export COLORS_FILE="/your/path/to/colors.txt"' >> .env
 source .env
-bash step4_catecomp.sh ...
+bash step4_catecomp.sh ... -o CateComp_Output/
 ```
 ---
 
@@ -159,10 +160,10 @@ bash step4_catecomp.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step4_catecomp.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step4_catecomp.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step4_catecomp/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step4_catecomp.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step4_catecomp.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step4_catecomp/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

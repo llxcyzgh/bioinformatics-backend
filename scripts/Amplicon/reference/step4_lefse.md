@@ -16,9 +16,10 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| Relative/ | 各分类层级相对丰度表目录 | DIR | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_lefse/Relative/) |
-| all.mf | 样本元数据文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_lefse/all.mf) |
-| lefse_vs.list | LEfSe 对比分组列表 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_lefse/lefse_vs.list) |
+| asv_table.even.txt | 均一化 ASV 表（step3 输出，传入时脚本自动生成 Relative/） | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_lefse/asv_table.even.txt) |
+| Relative/ | 各分类层级相对丰度表目录（也可直接传入） | DIR | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_lefse/Relative/) |
+| all.mf | 样本元数据文件 | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_lefse/all.mf) |
+| lefse_vs.list | LEfSe 对比分组列表 | TXT | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_lefse/lefse_vs.list) |
 
 ---
 
@@ -26,6 +27,7 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
+| Relative/ | 脚本内生成的各层级相对丰度表（-i 为 even 表时） | DIR | 16S/18S/ITS | 通用 | - |
 | LEfSe.png | LDA 判别图 + 进化树合并图 | PNG | 16S/18S/ITS | 通用 | - |
 | LEfSe.pdf | LDA 判别图 + 进化树合并图 | PDF | 16S/18S/ITS | 通用 | - |
 | LDA.png | LDA 判别分析图 | PNG | 16S/18S/ITS | 通用 | - |
@@ -41,23 +43,30 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_lefse.sh -i Relative/ -m all.mf -v lefse_vs.list
-# 输出：LEfSe.png, LEfSe.pdf, LDA.png, LDA.pdf, LDA.tree.png, LDA.tree.pdf
+bash ${AMPLICON_ROOT}/v2/scripts/step4_lefse.sh \
+    -i TableStats/asv_table.even.txt \
+    -m all.mf \
+    -v lefse_vs.list \
+    -o LEfSe_Output/
 ```
 
-**示例**：
+**示例**（直接传入 Relative/）：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_lefse.sh -i Relative/ -m all.mf -v lefse_vs.list
-# 输出：LEfSe.png, LEfSe.pdf, LDA.png, LDA.pdf, LDA.tree.png, LDA.tree.pdf
+bash ${AMPLICON_ROOT}/v2/scripts/step4_lefse.sh \
+    -i Relative/ \
+    -m all.mf \
+    -v lefse_vs.list \
+    -o LEfSe_Output/
 ```
 
 ### 参数说明
 
 | 参数 | 说明 | 必需 | 默认值 | 示例 |
 |------|------|------|--------|------|
-| -i, --input | 相对丰度表目录路径 | 是 | - | Relative/ |
+| -i, --input | Relative/ 目录或 asv_table.even.txt | 是 | - | TableStats/asv_table.even.txt |
 | -m, --meta | 样本元数据文件路径 | 是 | - | all.mf |
 | -v, --vs-list | LEfSe 对比分组列表路径 | 是 | - | lefse_vs.list |
+| -o, --output | 输出目录 | 是 | - | LEfSe_Output/ |
 
 ---
 
@@ -80,6 +89,8 @@ Y_vs_Z
 ## 流程步骤
 
 ```
+0️⃣ stat_otu_tab.pl：asv_table.even.txt → Relative/（-i 为 even 表时）
+   ↓
 1️⃣ plot_lefse.pl（执行 LEfSe 分析）
    ↓
 2️⃣ 生成 LDA 判别图（LDA.png/pdf）
@@ -112,7 +123,7 @@ Y_vs_Z
 ### 默认路径
 
 脚本内置默认软件路径，当前环境可直接使用：
-- **perl**: `/usr/bin/perl`
+- **stat_otu_tab.pl**: `/newVol/users/guorongjun/work/Pipline/Amplicon_pipeline/Amplicon_pipeline_V1.0/lib/03.ASV/featureAnalysis/stat_otu_tab.pl`
 - **plot_lefse.pl**: `/newVol/users/guorongjun/work/Pipline/Amplicon_pipeline/Amplicon_pipeline_V1.0/lib/04.Taxa_visualization/lib/plot_lefse.pl`
 - **svg2xxx**: `/gfs/users/guorongjun/work/Pipline/Amplicon_pipeline/Amplicon_pipeline_V1.0/software/svg2xxx_release/svg2xxx`
 - **convert**: `/usr/bin/convert` (ImageMagick)
@@ -129,7 +140,7 @@ echo 'export PLOT_LEFSE_PL="/your/path/to/plot_lefse.pl"' >> .env
 echo 'export SVG2XXX_BIN="/your/path/to/svg2xxx"' >> .env
 echo 'export CONVERT_BIN="/your/path/to/convert"' >> .env
 source .env
-bash step4_lefse.sh ...
+bash step4_lefse.sh ... -o LEfSe_Output/
 ```
 
 ---
@@ -138,7 +149,7 @@ bash step4_lefse.sh ...
 
 | 工具 | 输出文件 | 说明 |
 |------|----------|------|
-| step3_table_stats | Relative/ | 各分类层级相对丰度表 |
+| step3_table_stats | asv_table.even.txt | 均一化 ASV 表 |
 
 ---
 
@@ -153,10 +164,10 @@ bash step4_lefse.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step4_lefse.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step4_lefse.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step4_lefse/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step4_lefse.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step4_lefse.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step4_lefse/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-26

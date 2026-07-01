@@ -1,2 +1,13 @@
 sample-id	absolute-filepath
-D1	/vol1/guorongjun/BioAgent/Amplicon/openclaw/examples/step3_dada2/D1.fastq.gz
+T1001	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T1001.fastq
+T1002	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T1002.fastq
+T1003	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T1003.fastq
+T1091	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T1091.fastq
+T1092	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T1092.fastq
+T1093	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T1093.fastq
+T2001	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T2001.fastq
+T2002	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T2002.fastq
+T2003	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T2003.fastq
+T2091	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T2091.fastq
+T2092	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T2092.fastq
+T2093	/grj/BioAgent/Amplicon/v2/examples/step3_dada2/T2093.fastq

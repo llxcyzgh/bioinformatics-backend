@@ -16,17 +16,19 @@
 
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| asv_table.even.txt | 均一化 ASV 表（含分类学信息） | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/examples/step4_krona/asv_table.even.txt) |
+| asv_table.even.txt | 均一化 ASV 表（含分类学信息） | TSV | 16S/18S/ITS | 通用 | (${AMPLICON_ROOT}/v2/examples/step4_krona/asv_table.even.txt) |
 
 ---
 
 ## 输出
 
+> 所有输出文件均写入 `-o` 指定的目录（下表路径相对于输出目录）。
+
 | 文件名 | 描述 | 格式 | 适用组学 | 适用物种 | 示例文件 |
 |--------|------|------|----------|----------|----------|
-| krona.html | Krona 交互式图表 | HTML | 16S/18S/ITS | 通用 | - |
-| img/ | Krona 图片资源 | DIR | 16S/18S/ITS | 通用 | - |
-| src/ | Krona JavaScript 源码 | DIR | 16S/18S/ITS | 通用 | - |
+| Krona_Output/krona.html | Krona 交互式图表 | HTML | 16S/18S/ITS | 通用 | - |
+| Krona_Output/img/ | Krona 图片资源 | DIR | 16S/18S/ITS | 通用 | - |
+| Krona_Output/src/ | Krona JavaScript 源码 | DIR | 16S/18S/ITS | 通用 | - |
 
 ---
 
@@ -34,21 +36,21 @@
 
 **通用格式**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_krona.sh -t asv_table.even.txt
-# 输出：krona.html, img/, src/
+bash ${AMPLICON_ROOT}/v2/scripts/step4_krona.sh -t asv_table.even.txt -o Krona_Output/
+# 输出目录：Krona_Output/；文件：krona.html, img/, src/
 ```
 
 **示例**：
 ```bash
-bash ${AMPLICON_ROOT}/scripts/step4_krona.sh -t asv_table.even.txt
-# 输出：krona.html, img/, src/
+bash ${AMPLICON_ROOT}/v2/scripts/step4_krona.sh -t asv_table.even.txt -o Krona_Output/
+# 输出目录：Krona_Output/；文件：krona.html, img/, src/
 ```
 ### 参数说明
 
 | 参数 | 说明 | 必需 | 默认值 | 示例 |
 |------|------|------|--------|------|
 | -t, --table | 均一化 ASV 表路径 | 是 | - | asv_table.even.txt |
-| -o, --output | 输出目录名称 | 否 | krona | krona |
+| -o, --output | 输出目录 | 是 | - | Krona_Output/ |
 
 ---
 
@@ -82,7 +84,7 @@ bash ${AMPLICON_ROOT}/scripts/step4_krona.sh -t asv_table.even.txt
 echo 'export PERL_BIN="/your/path/to/perl"' > .env
 echo 'export IMPORT_RDP_PL="/your/path/to/ImportRDP.pl"' >> .env
 source .env
-bash step4_krona.sh ...
+bash step4_krona.sh ... -o Krona_Output/
 ```
 ---
 
@@ -104,10 +106,10 @@ bash step4_krona.sh ...
 
 ## 相关文件
 
-- **脚本位置**: `${AMPLICON_ROOT}/scripts/step4_krona.sh`
-- **参考文档**: `${AMPLICON_ROOT}/reference/step4_krona.md`
-- **示例数据**: `${AMPLICON_ROOT}/examples/step4_krona/`
+- **脚本位置**: `${AMPLICON_ROOT}/v2/scripts/step4_krona.sh`
+- **参考文档**: `${AMPLICON_ROOT}/v2/reference/step4_krona.md`
+- **示例数据**: `${AMPLICON_ROOT}/v2/examples/step4_krona/`
 
 ---
 
-最后更新：2026-04-15
+最后更新：2026-06-24

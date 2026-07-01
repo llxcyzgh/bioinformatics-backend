@@ -1,8 +1,11 @@
 #!/bin/bash
 # step1_cutadapt.sh - Cutadapt 引物修剪脚本
-# 用法：bash step1_cutadapt.sh -r1 <Sample.R1.fastq.gz> -r2 <Sample.R2.fastq.gz> -f <F_primer> -r <R_primer>
+# 用法：bash step1_cutadapt.sh -r1 <Sample.R1.fastq.gz> -r2 <Sample.R2.fastq.gz> -f <F_primer> -r <R_primer> -o <output_dir>
 
 set -e
+
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
 
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
@@ -29,6 +32,7 @@ R_PRIMER=""
 ERROR_RATE="0.1"
 MIN_LENGTH="100"
 THREADS="1"
+OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -39,6 +43,7 @@ while [[ $# -gt 0 ]]; do
         -e|--error-rate) ERROR_RATE="$2"; shift 2 ;;
         -l|--min-length) MIN_LENGTH="$2"; shift 2 ;;
         -n|--threads) THREADS="$2"; shift 2 ;;
+        -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
         -h|--help)
             echo "用法：bash step1_cutadapt.sh -r1 <Sample.R1.fastq.gz> -r2 <Sample.R2.fastq.gz> -f <F_primer> -r <R_primer>"
             exit 0
@@ -56,6 +61,8 @@ done
 # 检查输入文件
 [ ! -f "${R1_PATH}" ] && { echo "❌ 错误：R1 文件不存在：${R1_PATH}"; exit 1; }
 [ ! -f "${R2_PATH}" ] && { echo "❌ 错误：R2 文件不存在：${R2_PATH}"; exit 1; }
+
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
 
 # 从文件名提取样本名 (去掉 .R1.fastq.gz 或 .R2.fastq.gz 后缀)
 SAMPLE_NAME=$(basename "${R1_PATH}" | sed 's/\.R1\.fastq\.gz$//')
@@ -77,9 +84,17 @@ echo "   错误率：${ERROR_RATE}"
 echo "   最小长度：${MIN_LENGTH}"
 echo "   线程数：${THREADS}"
 
+# ----- 路径转绝对路径（cd 输出目录前） -----
+R1_PATH="$(abs_path_file "${R1_PATH}")"
+R2_PATH="$(abs_path_file "${R2_PATH}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+
 # 定义输出文件名 (带样本名)
-OUTPUT_R1="${SAMPLE_NAME}.cutadapt.R1.fastq.gz"
-OUTPUT_R2="${SAMPLE_NAME}.cutadapt.R2.fastq.gz"
+OUTPUT_R1="${OUTPUT_DIR}/${SAMPLE_NAME}.cutadapt.R1.fastq.gz"
+OUTPUT_R2="${OUTPUT_DIR}/${SAMPLE_NAME}.cutadapt.R2.fastq.gz"
 
 # 执行 cutadapt
 "${CUTADAPT_BIN}" \

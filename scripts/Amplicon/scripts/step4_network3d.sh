@@ -1,8 +1,11 @@
 #!/bin/bash
 # step4_network3d.sh - 3D 微生物网络可视化脚本
-# 用法：bash step4_network3d.sh -i <genus.relative.xls> [-n <top_n>]
+# 用法：bash step4_network3d.sh -i <genus.relative.xls> [-n <top_n>] -o <output_dir>
 
 set -e
+
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/lib/abs_path.sh"
 
 # ===== 软件路径（支持环境变量覆盖）=====
 # 默认路径（当前环境）
@@ -31,16 +34,21 @@ done
 INPUT_FILE=""
 TOP_N="100"
 
+OUTPUT_DIR=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         -i|--input) INPUT_FILE="$2"; shift 2 ;;
         -n|--top-n) TOP_N="$2"; shift 2 ;;
+                -o|--output) OUTPUT_DIR="$2"; shift 2 ;;
+
         -h|--help)
             echo "用法：bash step4_network3d.sh -i <genus.relative.xls> [-n <top_n>]"
             echo ""
             echo "参数:"
             echo "  -i, --input    属水平相对丰度表路径"
             echo "  -n, --top-n    Top 物种数量（默认：100）"
+            echo "  -o, --output     输出目录"
+
             echo "  -h, --help     显示帮助"
             exit 0
             ;;
@@ -51,6 +59,16 @@ done
 # 参数验证
 [ -z "${INPUT_FILE}" ] && { echo "❌ 错误：必须提供 -i"; exit 1; }
 [ ! -f "${INPUT_FILE}" ] && { echo "❌ 错误：丰度表不存在：${INPUT_FILE}"; exit 1; }
+
+[ -z "${OUTPUT_DIR}" ] && { echo "❌ 错误：必须提供 -o"; exit 1; }
+
+# ----- 路径转绝对路径（cd 输出目录前） -----
+INPUT_FILE="$(abs_path_file "${INPUT_FILE}")"
+OUTPUT_DIR="$(abs_path_out_dir "${OUTPUT_DIR}")"
+# ---------------------------------
+
+mkdir -p "${OUTPUT_DIR}"
+cd "${OUTPUT_DIR}"
 
 echo ""
 echo "=========================================="
