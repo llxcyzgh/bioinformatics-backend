@@ -89,6 +89,67 @@ _AWK_PAIRS_TAB = r"""awk '{g[++n]=$1} END{for(i=1;i<=n;i++)for(j=i+1;j<=n;j++)pr
 _AWK_PAIRS_VS = r"""awk '{g[++n]=$1} END{for(i=1;i<=n;i++)for(j=i+1;j<=n;j++)printf "%s_vs_%s\n",g[i],g[j]}'"""
 
 
+def build_sample_mapping_block(samples: dict) -> str:
+    """样本→哈希 关联数组 + SAMPLES 数组的 bash 段（per-sample 区头部原样逻辑）。
+
+    供 _gen_parallel_region 与 LLM 路 prompt 复用，保证两路一致。samples 为空返回空串。
+    """
+    if not samples:
+        return ""
+    r1 = [(s, v["R1"]) for s, v in samples.items() if "R1" in v]
+    r2 = [(s, v["R2"]) for s, v in samples.items() if "R2" in v]
+    decl = []
+    if r1:
+        decl.append("R1_OF")
+    if r2:
+        decl.append("R2_OF")
+    out: list[str] = []
+    if decl:
+        out.append("declare -A {}".format(" ".join(decl)))
+        for s, stored in r1:
+            out.append(f'R1_OF["{s}"]="/shared/{stored}"')
+        for s, stored in r2:
+            out.append(f'R2_OF["{s}"]="/shared/{stored}"')
+    out.append("SAMPLES=({})".format(" ".join(f'"{s}"' for s in samples.keys())))
+    return "\n".join(out)
+
+
+def build_derived_files_block(metadata_stored: str, tool_ids: list[str], call_defs: dict) -> str:
+    """metadata 变量 + group.list/vs.list/rf.list 派生的 bash 段（算法路头部原样逻辑）。
+
+    供 generate_orchestrator_script 头部与 LLM 路 prompt 复用，保证两路一致。
+    无内容时返回空串。
+    """
+    needs_group_list = any(
+        cd and any(p.data_type == "_GROUP_LIST" for p in cd.params)
+        for cd in (call_defs.get(tid) for tid in tool_ids)
+    )
+    list_consumers = [tid for tid in tool_ids if tid in _LIST_PAIR_CONSUMERS]
+
+    lines: list[str] = []
+    if metadata_stored:
+        lines.append(f'METADATA="/shared/{metadata_stored}"')
+    if needs_group_list or list_consumers:
+        if metadata_stored:
+            lines.append('awk -F\'[\\t,]\' \'/^#/{next} NF>=2{print $1"\\t"$2}\' "$METADATA" > group.list')
+        else:
+            lines.append("# ⚠ 链路需要 group.list（分组信息）但未上传 metadata；分组类步骤将失败")
+    if list_consumers:
+        if metadata_stored:
+            lines.append("# ─── vs.list / rf.list：从 group.list 的组别两两配对自动生成 ───")
+            lines.append("# 2 组→1 对；N 组→全部 C(N,2) 对。lefse=A_vs_B；metastat/randomforest=A<TAB>B。")
+            for tid in tool_ids:
+                spec = _LIST_PAIR_CONSUMERS.get(tid)
+                if not spec:
+                    continue
+                fname, fmt = spec
+                pairs_awk = _AWK_PAIRS_VS if fmt == "vs" else _AWK_PAIRS_TAB
+                lines.append(f"{_AWK_DISTINCT_GROUPS} | {pairs_awk} > {fname}")
+        else:
+            lines.append("# ⚠ 链路需要 vs.list/rf.list（组间对比配对）但未上传 metadata；相关步骤将失败")
+    return "\n".join(lines)
+
+
 def generate_orchestrator_script(
     tool_ids: list[str],
     call_defs: dict[str, ScriptCallDef],
@@ -144,16 +205,6 @@ def generate_orchestrator_script(
     if metadata_stored:
         uploaded_files["_METADATA"] = f"/shared/{metadata_stored}"
 
-    # 链路中是否有消费 group.list 的工具（-g _GROUP_LIST）。
-    # 是则尝试从 metadata 自动派生 group.list（见头部生成处）。
-    needs_group_list = any(
-        cd and any(p.data_type == "_GROUP_LIST" for p in cd.params)
-        for cd in (call_defs.get(tid) for tid in tool_ids)
-    )
-
-    # 链路中消费 vs.list/rf.list 的工具（组间对比配对），按 _LIST_PAIR_CONSUMERS 表。
-    list_consumers = [tid for tid in tool_ids if tid in _LIST_PAIR_CONSUMERS]
-
     # ─── 开始生成脚本 ───
     lines: list[str] = []
 
@@ -195,33 +246,11 @@ def generate_orchestrator_script(
         if path:
             var_name = type_id.replace("-", "_")
             lines.append(f'{var_name}="{path}"')
-    if metadata_stored:
-        lines.append(f'METADATA="/shared/{metadata_stored}"')
-    # group.list：链路需要分组（-g _GROUP_LIST）时，从 metadata 自动抽取
-    # 「样本名 + 分组(Description)」两列生成。metadata 格式由 beta-data 约定
-    # （#SampleID<TAB/逗号>Description，第1列样本、第2列分组），故第2列即分组列。
-    # 未上传 metadata 时无法派生 → 分组类步骤将失败（已知限制，不静默伪造）。
-    if needs_group_list or list_consumers:
-        # group.list：被 -g _GROUP_LIST 消费，也是 vs.list/rf.list 派生的输入。
-        if metadata_stored:
-            lines.append('awk -F\'[\\t,]\' \'/^#/{next} NF>=2{print $1"\\t"$2}\' "$METADATA" > group.list')
-        else:
-            lines.append("# ⚠ 链路需要 group.list（分组信息）但未上传 metadata；分组类步骤将失败")
-    # vs.list / rf.list：组间对比配对清单，从 group.list 的组别两两配对自动生成
-    # （无节点产出，类同 group.list）。未上传 metadata 时无法生成 → 相关步骤失败。
-    if list_consumers:
-        if metadata_stored:
-            lines.append("# ─── vs.list / rf.list：从 group.list 的组别两两配对自动生成 ───")
-            lines.append("# 2 组→1 对；N 组→全部 C(N,2) 对。lefse=A_vs_B；metastat/randomforest=A<TAB>B。")
-            for tid in tool_ids:
-                spec = _LIST_PAIR_CONSUMERS.get(tid)
-                if not spec:
-                    continue
-                fname, fmt = spec
-                pairs_awk = _AWK_PAIRS_VS if fmt == "vs" else _AWK_PAIRS_TAB
-                lines.append(f"{_AWK_DISTINCT_GROUPS} | {pairs_awk} > {fname}")
-        else:
-            lines.append("# ⚠ 链路需要 vs.list/rf.list（组间对比配对）但未上传 metadata；相关步骤将失败")
+    # metadata 变量 + group.list/vs.list/rf.list 派生：复用 build_derived_files_block
+    # （LLM 路也用同一函数，保证两路头部一致）
+    derived = build_derived_files_block(metadata_stored, tool_ids, call_defs)
+    if derived:
+        lines.extend(derived.split("\n"))
     lines.append("")
 
     # ─── 跟踪已生成的文件 ───
@@ -352,23 +381,12 @@ def _gen_parallel_region(lines, region_ids: list[str], call_defs: dict, tool_nam
     else:
         lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] [Steps {start}-{end}/{total_steps}] 并行预处理..."')
 
-    # 样本→上传哈希路径关联数组：每样本 R1/R2 的真实 /shared/<hash>。
-    # 循环内 ${R1_OF[$SAMPLE]} 直接取到，不再靠按样本名 glob（上传是哈希名，glob 找不到）。
-    r1_entries = [(s, v["R1"]) for s, v in samples.items() if "R1" in v]
-    r2_entries = [(s, v["R2"]) for s, v in samples.items() if "R2" in v]
-    decl = []
-    if r1_entries:
-        decl.append("R1_OF")
-    if r2_entries:
-        decl.append("R2_OF")
-    if decl:
-        lines.append("declare -A {}".format(" ".join(decl)))
-        for sname, stored in r1_entries:
-            lines.append(f'R1_OF["{sname}"]="/shared/{stored}"')
-        for sname, stored in r2_entries:
-            lines.append(f'R2_OF["{sname}"]="/shared/{stored}"')
-
-    lines.append("SAMPLES=({})".format(" ".join(f'"{s}"' for s in samples.keys())))
+    # 样本→上传哈希路径关联数组 + SAMPLES：复用 build_sample_mapping_block（LLM 路同源）
+    mapping = build_sample_mapping_block(samples)
+    if mapping:
+        lines.extend(mapping.split("\n"))
+    else:
+        lines.append("SAMPLES=()")  # samples 空时保留原行为：发空数组，per-sample 区空转
     lines.append('MAX_JOBS="${BIOFLOW_MAX_PARALLEL:-4}"')
     lines.append('if [ "$MAX_JOBS" -lt 1 ] 2>/dev/null; then MAX_JOBS=1; fi')
     lines.append("_JOB_I=0")
