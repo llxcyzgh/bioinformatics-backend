@@ -27,6 +27,14 @@ DATA_TYPE_TO_FILE_REQUIREMENT: dict[str, dict] = {
         "required": True,
         "multiple": True,
     },
+    "FASTQ_SINGLE": {
+        "typeId": "FASTQ_SINGLE",
+        "label": "单端测序原始数据",
+        "description": "单端测序的FASTQ文件（.fastq.gz），可上传多个样本的文件",
+        "extensions": [".fastq", ".fastq.gz", ".fq.gz"],
+        "required": True,
+        "multiple": True,
+    },
     "FASTA_SEQ": {
         "typeId": "FASTA_SEQ",
         "label": "FASTA序列文件",
@@ -123,6 +131,7 @@ DATA_TYPE_TO_FILE_REQUIREMENT: dict[str, dict] = {
 DATA_TYPE_NAMES: dict[str, str] = {
     "FASTA_SEQ": "FASTA序列文件",
     "FASTQ_PAIR": "双端测序原始数据",
+    "FASTQ_SINGLE": "单端测序原始数据",
     "FASTQ_TRIMMED": "引物切除后序列",
     "FASTQ_MERGED": "FLASH拼接序列",
     "FASTQ_QC": "质控后序列",

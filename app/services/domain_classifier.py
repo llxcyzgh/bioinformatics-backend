@@ -86,6 +86,22 @@ class DomainClassifier:
                 "reason": "关键词命中",
             }
 
+        # 原始测序数据 → 归 amplicon（唯一含"从原始数据跑到下游方法"全流程的领域）。
+        # LLM 在这条上不可靠（会把"原始数据+PCoA"误判到只做下游的 stats，理由还谎称"未提原始数据"），
+        # 故在 LLM 前加可靠安全网。仅当存在 amplicon 域时生效；将来有别的 raw-data 域再细化。
+        text_lc = (content or "").lower()
+        raw_signals = ["原始数据", "下机数据", "fastq", "双端测序", "单端测序"]
+        if any(s in text_lc for s in raw_signals):
+            amp = next((d for d in domains if d.code == AMPLICON_CODE), None)
+            if amp is not None:
+                logger.info(f"[DomainClassifier] 原始数据信号 → 钉 amplicon（安全网，绕过 LLM 误判）")
+                return {
+                    "domain_id": amp.id,
+                    "in_scope": True,
+                    "confidence": "high",
+                    "reason": "原始测序数据→扩增子全流程领域",
+                }
+
         # LLM 相关性判定（描述由 T1 在导入时填充；单库时唯一候选仍验相关性）
         return DomainClassifier._relevance_llm(domains, content)
 

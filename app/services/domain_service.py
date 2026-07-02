@@ -22,6 +22,8 @@ class DomainService:
 
     # domain_id -> list[ToolDef]；脚本写操作（期三）后调 invalidate 清理
     _tools_cache: dict[int, list[ToolDef]] = {}
+    # domain_id -> list[dict] 类型词表；DataType 写操作后随 invalidate 清理
+    _type_vocab_cache: dict[int, list[dict]] = {}
 
     # Phase 2 过桥：期三接入 DomainClassifier 后由分流结果替代
     AMPLICON_CODE = "amplicon"
@@ -95,14 +97,16 @@ class DomainService:
         rows = Script.where(db, domain_id=domain_id, verified=1, is_active=1).all()
         return {s.tool_id: s.name for s in rows}
 
-    @staticmethod
-    def get_type_vocab(db: Session, domain_id: int) -> list[dict]:
-        """该领域的数据类型词表（供解析器动态构建 prompt）。"""
-        rows = DataType.where(db, domain_id=domain_id).all()
-        return [
-            {"type_id": t.type_id, "label": t.label, "is_uploadable": t.is_uploadable}
-            for t in rows
-        ]
+    @classmethod
+    def get_type_vocab(cls, db: Session, domain_id: int) -> list[dict]:
+        """该领域的数据类型词表（供解析器/意图代理构建 prompt）。类缓存，随 invalidate 清理。"""
+        if domain_id not in cls._type_vocab_cache:
+            rows = DataType.where(db, domain_id=domain_id).all()
+            cls._type_vocab_cache[domain_id] = [
+                {"type_id": t.type_id, "label": t.label, "is_uploadable": t.is_uploadable}
+                for t in rows
+            ]
+        return cls._type_vocab_cache[domain_id]
 
     # ─── 根输入文件需求（替代 resolve_root_inputs）────────────
     @classmethod
@@ -288,5 +292,7 @@ class DomainService:
     def invalidate(cls, domain_id: int | None = None) -> None:
         if domain_id is None:
             cls._tools_cache.clear()
+            cls._type_vocab_cache.clear()
         else:
             cls._tools_cache.pop(domain_id, None)
+            cls._type_vocab_cache.pop(domain_id, None)

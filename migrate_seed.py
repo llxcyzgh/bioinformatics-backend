@@ -251,6 +251,7 @@ def seed():
     seed_scripts()
     seed_domains()
     seed_data_types()
+    ensure_data_type("amplicon", "FASTQ_SINGLE")
     backfill_domains()
     backfill_md_content()
     backfill_md_fields()
@@ -619,6 +620,42 @@ def seed_data_types():
             print(f"Seed data_types created successfully! ({len(rows)} types)")
         else:
             print("Data types already exist, skipping seed.")
+    finally:
+        session.close()
+
+
+def ensure_data_type(domain_code: str, type_id: str):
+    """幂等确保某领域有指定数据类型词表行（已存在则跳过）。
+
+    seed_data_types 只在空库时跑；已种子过的库要补新类型（如 FASTQ_SINGLE）走这里。
+    字段取自 DATA_TYPE_TO_FILE_REQUIREMENT（可上传根输入）或退回 DATA_TYPE_NAMES（不可上传）。
+    """
+    from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES, DATA_TYPE_TO_FILE_REQUIREMENT
+    session = SessionLocal()
+    try:
+        domain = session.query(Domain).filter(Domain.code == domain_code).first()
+        if not domain:
+            print(f"  ensure_data_type: domain {domain_code} not found, skip {type_id}.")
+            return
+        exists = session.query(DataType).filter(
+            DataType.domain_id == domain.id, DataType.type_id == type_id
+        ).first()
+        if exists:
+            return
+        req = DATA_TYPE_TO_FILE_REQUIREMENT.get(type_id, {})
+        label = req.get("label") or DATA_TYPE_NAMES.get(type_id, type_id)
+        session.add(DataType(
+            domain_id=domain.id,
+            type_id=type_id,
+            label=label,
+            description=req.get("description", "") if req else "",
+            extensions=json.dumps(req.get("extensions", []), ensure_ascii=False) if req else "[]",
+            required=int(req.get("required", 1)) if req else 1,
+            multiple=int(req.get("multiple", 0)) if req else 0,
+            is_uploadable=1 if req else 0,
+        ))
+        session.commit()
+        print(f"  ensure_data_type: added {type_id} to {domain_code} (is_uploadable={1 if req else 0}).")
     finally:
         session.close()
 

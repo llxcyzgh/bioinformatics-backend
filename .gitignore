@@ -39,6 +39,9 @@ scripts/Amplicon_v1_archive/
 scripts/Amplicon/examples/step3_dada2/T2001.fastq
 scripts/Amplicon/examples/step3_dada2/T2002.fastq
 
+# LLM 现生成脚本（ToolGenesisService 运行时落盘的产物，不入库）
+scripts/Amplicon/generated/
+
 # Ad-hoc test scripts
 test_playwright.py
 *.log
