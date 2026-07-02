@@ -445,9 +445,15 @@ def _gen_per_sample_body(lines, call_def: ScriptCallDef, produced_sample: dict[s
             tmpl = produced_sample[dt].replace("${sample}", "${SAMPLE}")
             args.append(f'{param.flag} "{tmpl}"')
         elif dt in _ROOT_INPUT_ARRAY:
-            # 根 FASTQ：从并行区发的关联数组取每样本实际上传哈希路径
+            # 根 FASTQ：上传存的是哈希名，但下游 .sh 靠「输入文件 basename 反推样本名」
+            # （cutadapt: sed 's/\.R1\.fastq\.gz$//'；flash/frags_qc 同理）。哈希名喂进去会
+            # 抽出哈希、产出哈希名文件，下游按样本名找就断。故先把哈希文件软链规范化成
+            # ${SAMPLE}.R1/.R2.fastq.gz 再传：basename 抽出 SAMPLE，全链命名一致。
             arr = _ROOT_INPUT_ARRAY[dt]
-            args.append(f'{param.flag} "${{{arr}[$SAMPLE]}}"')
+            canon_ext = ".R1.fastq.gz" if dt == "FASTQ_R1" else ".R2.fastq.gz"
+            canon = f"${{SAMPLE}}{canon_ext}"
+            pre.append(f'{indent}ln -sf "${{{arr}[$SAMPLE]}}" "{canon}"')
+            args.append(f'{param.flag} "{canon}"')
         elif dt in _ROOT_INPUT_GLOBS:
             # 兜底：无样本映射（samples 为空）时按样本名 glob
             glob_pat, fallback = _ROOT_INPUT_GLOBS[dt]
