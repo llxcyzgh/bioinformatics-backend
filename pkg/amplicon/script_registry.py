@@ -204,6 +204,10 @@ TOOL_SCRIPT_CALLS: dict[str, ScriptCallDef] = {
             # PCOA_COORDS 用空串代表整个 BetaData_Output 目录（pcoa -i 目录模式消费它）；
             # 真正的坐标在每个 *_pcoa_results_qza/ordination.txt 里，由 beta-data 解压 .qza 产出。
             OutputFileDef(data_type="PCOA_COORDS", filename=""),
+            # beta-div/catecomp 的 -u/-w 要 unifrac 两份不同的距离矩阵（.tsv）：
+            # core-metrics 产出 .qza 后 cd OUTPUT_DIR 导出，故前缀 BetaData_Output/。
+            OutputFileDef(data_type="UNWEIGHTED_DM", filename="unweighted_unifrac_distance_matrix_qza/distance-matrix.tsv"),
+            OutputFileDef(data_type="WEIGHTED_DM", filename="weighted_unifrac_distance_matrix_qza/distance-matrix.tsv"),
         ],
     ),
     "amp-upgma": ScriptCallDef(
@@ -247,8 +251,9 @@ TOOL_SCRIPT_CALLS: dict[str, ScriptCallDef] = {
         tool_id="amp-beta-div",
         script_path="Amplicon/scripts/step5_beta_div.sh",
         params=[
-            ParamDef(flag="-u", data_type="DIST_MATRIX"),
-            ParamDef(flag="-w", data_type="DIST_MATRIX"),
+            # -u/-w 要 unifrac 两份不同的距离矩阵（beta-data 产出），不可共用同一 DIST_MATRIX。
+            ParamDef(flag="-u", data_type="UNWEIGHTED_DM"),
+            ParamDef(flag="-w", data_type="WEIGHTED_DM"),
             ParamDef(flag="-g", data_type="_GROUP_LIST"),
         ],
         outputs=[
@@ -262,8 +267,8 @@ TOOL_SCRIPT_CALLS: dict[str, ScriptCallDef] = {
         params=[
             ParamDef(flag="-t", data_type="ASV_TABLE_EVEN"),
             ParamDef(flag="-g", data_type="_GROUP_LIST"),
-            ParamDef(flag="-u", data_type="DIST_MATRIX", required=False),
-            ParamDef(flag="-w", data_type="DIST_MATRIX", required=False),
+            ParamDef(flag="-u", data_type="UNWEIGHTED_DM", required=False),
+            ParamDef(flag="-w", data_type="WEIGHTED_DM", required=False),
         ],
         outputs=[
             OutputFileDef(data_type="CATECOMP_RESULT", filename="Anosim/"),
