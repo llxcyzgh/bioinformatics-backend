@@ -83,7 +83,7 @@ TOOL_SCRIPT_CALLS: dict[str, ScriptCallDef] = {
             ParamDef(flag="-t", data_type="_CONFIG", default="1", required=False),
         ],
         outputs=[
-            OutputFileDef(data_type="FASTQ_MERGED", filename="${sample}.out.extendedFrags.fastq"),
+            OutputFileDef(data_type="FASTQ_MERGED", filename="${sample}.extendedFrags.fastq"),
         ],
         per_sample=True,
     ),

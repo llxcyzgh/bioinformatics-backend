@@ -476,11 +476,14 @@ def _build_single_command(call_def, produced: dict, extra: dict, tool_overrides:
             continue
 
         if dt == "_METADATA":
-            meta = produced.get("_METADATA", extra.get("metadata_stored", ""))
+            # metadata_stored 是 confirm_upload 传入的裸哈希名，需补 /shared/ 前缀；
+            # produced["_METADATA"]（若已注入）则已带前缀。
+            meta = produced.get("_METADATA")
+            if not meta:
+                ms = extra.get("metadata_stored", "")
+                meta = f"/shared/{ms}" if ms else ""
             if meta:
                 cmd_parts.append(f'{param.flag} "{meta}"')
-            elif not param.required:
-                continue
             continue
 
         if dt == "_GROUP_LIST":
