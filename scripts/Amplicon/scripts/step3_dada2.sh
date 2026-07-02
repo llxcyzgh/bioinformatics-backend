@@ -97,7 +97,7 @@ qiime tools import \
 # Step 2: DADA2 去噪
 echo "[2/6] DADA2 去噪..."
 qiime dada2 denoise-single \
-   --i-demultiplexed-seqs ../allFastq.qza \
+   --i-demultiplexed-seqs allFastq.qza \
    --p-trunc-len ${TRUNC_LEN} \
    --o-table dada2-table.qza \
    --o-representative-sequences dada2-repseq.qza \
