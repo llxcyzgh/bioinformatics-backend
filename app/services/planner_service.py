@@ -9,7 +9,8 @@ import logging
 from dataclasses import asdict
 
 from pkg.amplicon.planner import plan, PlanningRequest
-from pkg.amplicon.script_registry import TOOL_SCRIPT_CALLS  # noqa: F401  (保留导入兼容；per_sample 已改读 DB)from app.services.domain_service import DomainService
+from pkg.amplicon.script_registry import TOOL_SCRIPT_CALLS  # noqa: F401  (保留导入兼容；per_sample 已改读 DB)
+from app.services.domain_service import DomainService
 from app.models.script import Script
 
 logger = logging.getLogger(__name__)

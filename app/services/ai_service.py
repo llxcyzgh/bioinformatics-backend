@@ -83,10 +83,16 @@ class AIService:
         if response["type"] not in valid_types:
             raise ValueError(f"Invalid type from LLM: {response['type']}")
 
+        # data 列是 Text：必须落 JSON 字符串。LLM 对 path/code 类型会直接返回数组/对象，
+        # 这里统一序列化，避免 list/dict 直接塞进 Message.data 触发 SQLite 绑定错误。
+        data = response.get("data", "")
+        if not isinstance(data, str):
+            data = json.dumps(data, ensure_ascii=False) if data else ""
+
         return {
             "type": response["type"],
             "content": response.get("content", ""),
-            "data": response.get("data", ""),
+            "data": data,
         }
 
     @staticmethod
