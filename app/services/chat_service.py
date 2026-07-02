@@ -966,7 +966,7 @@ class ChatService:
    - `CONVERT_BIN=/opt/conda/bin/convert`
    覆盖脚本中所有默认的工具路径环境变量。对于脚本中引用的 R/Perl 辅助脚本路径（如 /newVol/...），如果不存在则在脚本开头用 `MODULE_ENV_FILE` 或直接 export 覆盖为 `/shared/lib/` 下的对应路径。如果 `/shared/lib/` 下也没有，则跳过该辅助脚本的调用并输出警告，不要报错退出。
 
-4. **用户上传文件**：用户上传的文件存放在 `/shared/` 目录下，文件名使用上传时的原始文件名。
+4. **用户上传文件**：用户上传的文件存放在 `/shared/` 目录下，文件名使用系统存储的哈希名（stored_name，形如 `abc123def.gz`），用 `/shared/<stored_name>` 引用。
 
 5. **进度输出**：每个步骤开始前输出进度信息，格式为：
    `echo "[$(date '+%Y-%m-%d %H:%M:%S')] [步骤 X/N] 正在执行: xxx"`

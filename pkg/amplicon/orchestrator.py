@@ -59,8 +59,15 @@ def _output_dir_default(call_def: ScriptCallDef) -> str:
     return ""
 
 
-# 根 FASTQ 输入的 glob 兜底模式：data_type → (glob, fallback)
-# 保留 cutadapt 的稳健性——先按样本名 glob 找真实文件，找不到再用 fallback。
+# 根 FASTQ 输入：data_type → 关联数组名。_gen_parallel_region 据 samples 的上传哈希
+# 发 `declare -A R1_OF R2_OF` + 每样本 `/shared/<hash>`，循环内用 ${R1_OF[$SAMPLE]} 取。
+_ROOT_INPUT_ARRAY = {
+    "FASTQ_R1": "R1_OF",
+    "FASTQ_R2": "R2_OF",
+}
+
+# glob 兜底模式：data_type → (glob, fallback)。仅当无样本映射（samples 为空）时用，
+# 保留"按样本名找文件"的稳健性。
 _ROOT_INPUT_GLOBS = {
     "FASTQ_R1": ("/shared/${SAMPLE}*.R1*", "/shared/${SAMPLE}.R1.fastq.gz"),
     "FASTQ_R2": ("/shared/${SAMPLE}*.R2*", "/shared/${SAMPLE}.R2.fastq.gz"),
@@ -151,20 +158,14 @@ def generate_orchestrator_script(
     lines.append("# ─── 用户上传文件 ───")
     for rf in required_files:
         type_id = rf.get("typeId", "")
-        label = rf.get("label", "")
         if type_id == "FASTQ_PAIR":
-            # FASTQ 对会在下面 per-sample 循环中处理
-            if samples:
-                first = next(iter(samples.values()))
-                if "R1" in first:
-                    lines.append(f'FASTQ_R1="/shared/{first["R1"]}"')
-                if "R2" in first:
-                    lines.append(f'FASTQ_R2="/shared/{first["R2"]}"')
-        else:
-            path = uploaded_files.get(type_id, "")
-            if path:
-                var_name = type_id.replace("-", "_")
-                lines.append(f'{var_name}="{path}"')
+            # FASTQ 对在 per-sample 循环里经关联数组 R1_OF/R2_OF 引用；
+            # 头部不发（避免只列首个样本、与多样本实际情况不符的误导）。
+            continue
+        path = uploaded_files.get(type_id, "")
+        if path:
+            var_name = type_id.replace("-", "_")
+            lines.append(f'{var_name}="{path}"')
     if metadata_stored:
         lines.append(f'METADATA="/shared/{metadata_stored}"')
     lines.append("")
@@ -297,6 +298,22 @@ def _gen_parallel_region(lines, region_ids: list[str], call_defs: dict, tool_nam
     else:
         lines.append(f'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] [Steps {start}-{end}/{total_steps}] 并行预处理..."')
 
+    # 样本→上传哈希路径关联数组：每样本 R1/R2 的真实 /shared/<hash>。
+    # 循环内 ${R1_OF[$SAMPLE]} 直接取到，不再靠按样本名 glob（上传是哈希名，glob 找不到）。
+    r1_entries = [(s, v["R1"]) for s, v in samples.items() if "R1" in v]
+    r2_entries = [(s, v["R2"]) for s, v in samples.items() if "R2" in v]
+    decl = []
+    if r1_entries:
+        decl.append("R1_OF")
+    if r2_entries:
+        decl.append("R2_OF")
+    if decl:
+        lines.append("declare -A {}".format(" ".join(decl)))
+        for sname, stored in r1_entries:
+            lines.append(f'R1_OF["{sname}"]="/shared/{stored}"')
+        for sname, stored in r2_entries:
+            lines.append(f'R2_OF["{sname}"]="/shared/{stored}"')
+
     lines.append("SAMPLES=({})".format(" ".join(f'"{s}"' for s in samples.keys())))
     lines.append('MAX_JOBS="${BIOFLOW_MAX_PARALLEL:-4}"')
     lines.append('if [ "$MAX_JOBS" -lt 1 ] 2>/dev/null; then MAX_JOBS=1; fi')
@@ -373,7 +390,12 @@ def _gen_per_sample_body(lines, call_def: ScriptCallDef, produced_sample: dict[s
         if dt in produced_sample:
             tmpl = produced_sample[dt].replace("${sample}", "${SAMPLE}")
             args.append(f'{param.flag} "{tmpl}"')
+        elif dt in _ROOT_INPUT_ARRAY:
+            # 根 FASTQ：从并行区发的关联数组取每样本实际上传哈希路径
+            arr = _ROOT_INPUT_ARRAY[dt]
+            args.append(f'{param.flag} "${{{arr}[$SAMPLE]}}"')
         elif dt in _ROOT_INPUT_GLOBS:
+            # 兜底：无样本映射（samples 为空）时按样本名 glob
             glob_pat, fallback = _ROOT_INPUT_GLOBS[dt]
             var = f"{dt}_FILE"  # FASTQ_R1_FILE
             pre.append(f'{indent}{var}="{fallback}"')
