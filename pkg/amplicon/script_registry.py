@@ -201,7 +201,9 @@ TOOL_SCRIPT_CALLS: dict[str, ScriptCallDef] = {
         ],
         outputs=[
             OutputFileDef(data_type="DIST_MATRIX", filename="bray_curtis_distance_matrix.qza"),
-            OutputFileDef(data_type="PCOA_COORDS", filename="bray_curtis_pcoa_results.qza"),
+            # PCOA_COORDS 用空串代表整个 BetaData_Output 目录（pcoa -i 目录模式消费它）；
+            # 真正的坐标在每个 *_pcoa_results_qza/ordination.txt 里，由 beta-data 解压 .qza 产出。
+            OutputFileDef(data_type="PCOA_COORDS", filename=""),
         ],
     ),
     "amp-upgma": ScriptCallDef(
@@ -457,8 +459,10 @@ TOOL_SCRIPT_CALLS: dict[str, ScriptCallDef] = {
         tool_id="amp-pcoa",
         script_path="Amplicon/scripts/step5_pcoa.sh",
         params=[
-            ParamDef(flag="-w", data_type="PCOA_COORDS"),
-            ParamDef(flag="-wu", data_type="PCOA_COORDS"),
+            # -i 目录模式：吃 beta-data/upgma 的输出目录（内含 *_pcoa_results_qza/ordination.txt）。
+            # 旧的 -w/-wu 期望 weighted/unweighted unifrac 的 .txt，且 PCOA_COORDS 会被解析成单个
+            # .qza，类型/语义都错；改用脚本首选的 -i <BetaData_Output/> 目录模式。
+            ParamDef(flag="-i", data_type="PCOA_COORDS"),
             ParamDef(flag="-g", data_type="_GROUP_LIST"),
         ],
         outputs=[

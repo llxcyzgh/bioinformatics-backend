@@ -73,6 +73,21 @@ _ROOT_INPUT_GLOBS = {
     "FASTQ_R2": ("/shared/${SAMPLE}*.R2*", "/shared/${SAMPLE}.R2.fastq.gz"),
 }
 
+# vs.list / rf.list 消费者 → (生成文件名, 配对格式)。这类「组间对比配对」清单无节点产出，
+# 由头部从 group.list 的组别两两配对自动生成（2 组→1 对，N 组→全配对 C(N,2)）。
+# 格式由各脚本解析逻辑决定：lefse 用 A_vs_B（step4_lefse.md），metastat/randomforest 用 A<TAB>B。
+_LIST_PAIR_CONSUMERS = {
+    "amp-lefse":        ("lefse_vs.list", "vs"),
+    "amp-metastat":     ("Vs.list",        "tab"),
+    "amp-randomforest": ("rf.list",        "tab"),
+}
+
+# 头部生成 vs.list/rf.list 的 awk 片段：从 group.list 第2列取组别 → sort -u → 两两配对。
+# \t/\n 保持字面（awk 的 printf 在格式串里解释为 tab/换行）。
+_AWK_DISTINCT_GROUPS = r"awk 'NF>=2 && $1!~/^#/{print $2}' group.list | sort -u"
+_AWK_PAIRS_TAB = r"""awk '{g[++n]=$1} END{for(i=1;i<=n;i++)for(j=i+1;j<=n;j++)printf "%s\t%s\n",g[i],g[j]}'"""
+_AWK_PAIRS_VS = r"""awk '{g[++n]=$1} END{for(i=1;i<=n;i++)for(j=i+1;j<=n;j++)printf "%s_vs_%s\n",g[i],g[j]}'"""
+
 
 def generate_orchestrator_script(
     tool_ids: list[str],
@@ -129,6 +144,16 @@ def generate_orchestrator_script(
     if metadata_stored:
         uploaded_files["_METADATA"] = f"/shared/{metadata_stored}"
 
+    # 链路中是否有消费 group.list 的工具（-g _GROUP_LIST）。
+    # 是则尝试从 metadata 自动派生 group.list（见头部生成处）。
+    needs_group_list = any(
+        cd and any(p.data_type == "_GROUP_LIST" for p in cd.params)
+        for cd in (call_defs.get(tid) for tid in tool_ids)
+    )
+
+    # 链路中消费 vs.list/rf.list 的工具（组间对比配对），按 _LIST_PAIR_CONSUMERS 表。
+    list_consumers = [tid for tid in tool_ids if tid in _LIST_PAIR_CONSUMERS]
+
     # ─── 开始生成脚本 ───
     lines: list[str] = []
 
@@ -162,12 +187,41 @@ def generate_orchestrator_script(
             # FASTQ 对在 per-sample 循环里经关联数组 R1_OF/R2_OF 引用；
             # 头部不发（避免只列首个样本、与多样本实际情况不符的误导）。
             continue
+        if type_id == "METADATA":
+            # METADATA 由下方 metadata_stored 块统一发（同时驱动 group.list 派生），
+            # 避免这里再发一次造成 METADATA= 重复。
+            continue
         path = uploaded_files.get(type_id, "")
         if path:
             var_name = type_id.replace("-", "_")
             lines.append(f'{var_name}="{path}"')
     if metadata_stored:
         lines.append(f'METADATA="/shared/{metadata_stored}"')
+    # group.list：链路需要分组（-g _GROUP_LIST）时，从 metadata 自动抽取
+    # 「样本名 + 分组(Description)」两列生成。metadata 格式由 beta-data 约定
+    # （#SampleID<TAB/逗号>Description，第1列样本、第2列分组），故第2列即分组列。
+    # 未上传 metadata 时无法派生 → 分组类步骤将失败（已知限制，不静默伪造）。
+    if needs_group_list or list_consumers:
+        # group.list：被 -g _GROUP_LIST 消费，也是 vs.list/rf.list 派生的输入。
+        if metadata_stored:
+            lines.append('awk -F\'[\\t,]\' \'/^#/{next} NF>=2{print $1"\\t"$2}\' "$METADATA" > group.list')
+        else:
+            lines.append("# ⚠ 链路需要 group.list（分组信息）但未上传 metadata；分组类步骤将失败")
+    # vs.list / rf.list：组间对比配对清单，从 group.list 的组别两两配对自动生成
+    # （无节点产出，类同 group.list）。未上传 metadata 时无法生成 → 相关步骤失败。
+    if list_consumers:
+        if metadata_stored:
+            lines.append("# ─── vs.list / rf.list：从 group.list 的组别两两配对自动生成 ───")
+            lines.append("# 2 组→1 对；N 组→全部 C(N,2) 对。lefse=A_vs_B；metastat/randomforest=A<TAB>B。")
+            for tid in tool_ids:
+                spec = _LIST_PAIR_CONSUMERS.get(tid)
+                if not spec:
+                    continue
+                fname, fmt = spec
+                pairs_awk = _AWK_PAIRS_VS if fmt == "vs" else _AWK_PAIRS_TAB
+                lines.append(f"{_AWK_DISTINCT_GROUPS} | {pairs_awk} > {fname}")
+        else:
+            lines.append("# ⚠ 链路需要 vs.list/rf.list（组间对比配对）但未上传 metadata；相关步骤将失败")
     lines.append("")
 
     # ─── 跟踪已生成的文件 ───
@@ -489,6 +543,13 @@ def _build_single_command(call_def, produced: dict, extra: dict, tool_overrides:
         if dt == "_GROUP_LIST":
             # group.list 通常由 metadata 生成
             cmd_parts.append(f'{param.flag} group.list')
+            continue
+
+        if dt in ("_VS_LIST", "_RF_LIST"):
+            # vs.list/rf.list 由头部从 group.list 两两配对生成；文件名按工具约定
+            spec = _LIST_PAIR_CONSUMERS.get(call_def.tool_id)
+            if spec:
+                cmd_parts.append(f"{param.flag} {spec[0]}")
             continue
 
         if dt.startswith("_"):
