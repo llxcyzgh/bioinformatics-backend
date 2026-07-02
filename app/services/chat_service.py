@@ -27,7 +27,12 @@ from config.llm import DASHSCOPE_API_BASE, DASHSCOPE_API_KEY, DASHSCOPE_MODEL_NA
 from config.upload import UPLOAD_DIR
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
 from pkg.amplicon.code_templates import generate_workflow_script
-from pkg.amplicon.orchestrator import generate_orchestrator_script
+from pkg.amplicon.orchestrator import (
+    generate_orchestrator_script,
+    build_sample_mapping_block,
+    build_derived_files_block,
+    _resolve_fastq_pair_uploads,
+)
 from app.services.script_service import ScriptService
 
 logger = logging.getLogger(__name__)
@@ -821,12 +826,31 @@ class ChatService:
         if pparts:
             lines.append("参数: " + "  ".join(pparts))
         if call_def.outputs:
-            outs = ", ".join(f"{o.data_type}={o.filename}" for o in call_def.outputs)
+            outs = ", ".join(
+                (f"{o.data_type}=<目录模式，下游用上一步 -o 目录引用>" if not o.filename else f"{o.data_type}={o.filename}")
+                for o in call_def.outputs
+            )
             where = f"（相对 {out_dir}/）" if out_dir else ""
             lines.append(f"产物{where}: {outs}")
         if getattr(call_def, "per_sample", False):
             lines.append("注: per-sample，按样本循环；filename 里的 ${sample} 用样本变量替换")
         return "\n".join(lines)
+
+    @staticmethod
+    def _load_tool_source(script_path: str) -> str:
+        """读取节点 .sh 源码，喂给 LLM 理解参数语义/隐含机制（哪些参数可省、
+        脚本如何从输入 basename 反推样本名、目录模式产物如何被消费）。
+
+        script_path 形如 "Amplicon/scripts/step1_cutadapt.sh"，相对后端根的 scripts/ 目录。
+        """
+        backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        full = os.path.join(backend_root, "scripts", script_path)
+        try:
+            with open(full, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            logger.warning(f"[ChatService] 读取脚本源码失败 {script_path}: {e}")
+            return ""
 
     @staticmethod
     def _generate_orchestrator_with_llm(
@@ -850,10 +874,10 @@ class ChatService:
 
             extra = extra_params or {}
 
-            # ─── 构造每个工具的【紧凑调用契约】（从 DB ScriptCallDef，替代整篇 .md）───
-            # v2 改造：不再把整篇 reference .md 原文喂给 LLM（啰嗦、模型照搬散文、靠 rename 兜底），
-            # 而是给结构化契约——脚本路径、必含的 -o 输出目录、参数、产物文件名（相对 -o）。
-            # 文件名由此确定性，LLM 无需 rename/symlink 兜底，输出大幅精简。
+            # ─── 构造每个工具的【契约 + .sh 源码】───
+            # 契约（脚本路径/-o/参数/产物文件名）钉死文件名与接线，防 LLM 编造；
+            # .sh 源码让 LLM 理解参数语义/隐含机制（哪些可省、basename 抽样、目录模式），
+            # 构成与算法路（纯规则读契约）的真正对照——两路用不同方式理解同一流程。
             cd_map = call_defs or {}
             md_sections = []
             for tid in tool_ids:
@@ -861,7 +885,14 @@ class ChatService:
                 tool_name = tool_info.get("name") or tool_info.get("label") or tid
                 cd = cd_map.get(tid)
                 if cd:
-                    md_sections.append(ChatService._build_tool_contract(tid, cd, tool_name))
+                    block = ChatService._build_tool_contract(tid, cd, tool_name)
+                    src = ChatService._load_tool_source(cd.script_path)
+                    if src:
+                        block += (
+                            f"\n源码 {cd.script_path}（理解参数语义/隐含机制用；"
+                            f"文件名与接线仍以契约为准，勿照搬源码散文）:\n```bash\n{src}\n```"
+                        )
+                    md_sections.append(block)
                 else:
                     # 回退：DB 无契约时读 .md 原文（极少发生）
                     md = ChatService._load_tool_reference_md(tid)
@@ -899,6 +930,12 @@ class ChatService:
                 )
             upload_desc = "\n".join(upload_lines) or "无"
 
+            # ─── 预计算「样本映射」+「自动派生文件」（既定事实，喂给 LLM，与算法路同源）───
+            # LLM 不再自己从文件名猜样本名 / 编 group.list，而是原样使用这两段确定性产物。
+            samples = _resolve_fastq_pair_uploads(file_mappings, required_files)
+            sample_mapping_block = build_sample_mapping_block(samples)
+            derived_block = build_derived_files_block(extra.get("metadata_stored", ""), tool_ids, cd_map)
+
             # ─── 构造 required_files 描述 ───
             rf_lines = []
             for rf in required_files:
@@ -917,36 +954,37 @@ class ChatService:
                     ovr_lines.append(f"- {tid}: {flags}")
             param_overrides_desc = "\n".join(ovr_lines) or "无"
 
-            system_prompt = """你是一个生物信息分析流程编排专家。根据下方【工具调用契约】（已结构化给出每个工具的脚本路径、必含的 -o 输出目录、参数、产物文件名）和上传文件信息，生成一个完整可执行的 bash 脚本。
+            system_prompt = """你是一个生物信息分析流程编排专家。根据下方【工具调用契约】（每个工具都附了它的 .sh 源码）和【已确定的样本/文件映射】生成一个完整可执行的 bash 脚本。
 
-【v2 核心契约，必须遵守】
-- 每个工具都强制 `-o <Tool>_Output`：产物写入该目录。
-- 下一步的输入必须指向上一步 `-o` 目录里的具体文件（如 `-i DADA2_Output/featureSeqs.qza`），不要假设产物在当前目录。
-- 产物文件名已在契约中确定——直接用契约给的文件名，【不要】重命名、不要 cp、不要 symlink 去对齐名字。
+【关于附带的源码——用来理解全貌】
+- 契约段里每个工具都附了它的 .sh 源码。读源码以理解参数的真实语义和隐含机制：哪些参数可省（如可选的参考数据库 -d，不传则脚本跳过该子功能）、脚本如何从输入文件 basename 反推样本名、目录模式产物如何被消费、-g 需要什么格式的清单。
+- 但【文件名和接线以契约为准】，源码只帮你理解"为什么这样接"；不要照搬源码里的 echo/usage/软件验证/cleanup 等散文，不要编造契约外的文件名。
 
-要求：
-1. `#!/bin/bash` 开头，`set -euo pipefail`。
-2. 顶部 export `PATH=/opt/conda/bin:$PATH` 和 `AMPLICON_ROOT=/opt/amplicon`。
-3. 按工具链顺序，每步 `bash ${AMPLICON_ROOT}/<契约给出的脚本路径>`，必含 `-o <Tool>_Output`。
-4. 上传文件在 `/shared/`，用 `/shared/<stored_name>` 引用。
-5. per-sample 工具（契约标注 per-sample）：融合进【唯一一个】按样本并行的区域，每个样本在同一个 `( ... ) &` 子shell 内顺序跑完所有 per-sample 步骤；产物文件名里的 ${sample} 用当前样本变量替换。结构：
-   SAMPLES=("a" "b")
-   MAX_JOBS="${BIOFLOW_MAX_PARALLEL:-4}"
-   _JOB_I=0
-   for SAMPLE in "${SAMPLES[@]}"; do
-     (
-       bash .../step1_cutadapt.sh -r1 ... -o Cutadapt_Output
-       bash .../step1_flash.sh -1 Cutadapt_Output/${SAMPLE}.... -o Flash_Output
-     ) &
-     _JOB_I=$((_JOB_I+1))
-     if [ $((_JOB_I % MAX_JOBS)) -eq 0 ]; then wait || { echo "[FATAL] per-sample 失败" >&2; exit 1; }; fi
-   done
-   wait || { echo "[FATAL] per-sample 失败" >&2; exit 1; }
-   禁止为每个 per-sample 工具各开一个 for 循环；必须是单一融合区域。
-6. 契约含 manifest（如 DADA2）：在 per-sample 区的 wait 之后，先生成 manifest.tsv（每样本一行：sample-id<TAB>$(pwd)/<上一步 QC 产物路径>），再调用该工具，含 -o。
-7. 引物 / 元数据 / 用户改的参数：按"额外参数"和"用户修改的参数"传入，覆盖默认值。
-8. 只输出 bash 脚本本身，不要解释、不要 markdown 代码块。
-9. 【简洁】只输出 export、必要变量、每步的 bash 调用行、简短进度 echo；禁止大段行内注释、禁止照抄契约原文、禁止多余空行。目标：行数最少且可读。"""
+【工具间衔接——最重要的规则】
+1. 每个工具强制 -o <Tool>_Output，产物写入该目录。
+2. 本步参数消费的数据类型 <DT> 等于上一步某产物的数据类型时，本步该参数指向上一步产物。两种情形：
+   (a) 产物有具体 filename → 指向「上一步 -o 目录/filename」，如 -i DADA2_Output/featureSeqs.qza；
+   (b) 产物标注「目录模式」(filename 为空) → 该类型即上一步整个 -o 目录，本步参数直接指向上一步 -o 目录本身，如 -i BetaData_Output/。
+   绝不编造契约里没有的文件名。
+
+【样本与文件映射——已确定，禁止从文件名猜测】
+3. 上传文件存为哈希名(stored_name)，磁盘即 /shared/<stored_name>；用户原始文件名 original_name 只用来确定样本归属。
+4. 「样本与文件映射」段已给出 declare -A R1_OF R2_OF 和 SAMPLES=() —— 这是唯一真值来源，原样保留到脚本，不要写任何"从文件名解析样本名"的逻辑。
+
+【per-sample 区】
+5. per-sample 工具(cutadapt/flash/frags_qc 等契约标注 per-sample 者)从【输入文件 basename】反推样本名。哈希名直接喂会抽出哈希、产出哈希名文件，下游按样本名找不到而断链。故每个样本循环体开头必须先把哈希文件软链规范化：
+     ln -sf "${R1_OF[$SAMPLE]}" "${SAMPLE}.R1.fastq.gz"
+     ln -sf "${R2_OF[$SAMPLE]}" "${SAMPLE}.R2.fastq.gz"
+   然后 cutadapt 用 -r1 "${SAMPLE}.R1.fastq.gz"。basename 才能抽出 $SAMPLE，全链命名一致。
+6. 所有 per-sample 工具融合进【唯一一个】按样本并行区，每样本在同一个 ( ... ) & 子shell 内顺序跑完；产物 filename 里的 ${sample} 用 $SAMPLE 替换。禁止为每个 per-sample 工具各开一个 for 循环。
+
+【manifest 与自动派生文件——已预生成，原样保留】
+7. 契约含 manifest 的工具（如 DADA2）：在 per-sample 区 wait 之后，生成 manifest.tsv(每样本一行：sample-id<TAB>$(pwd)/<上一步 QC 产物路径>)，再调用该工具。
+8. group.list / vs.list / rf.list 无节点产出。「自动派生文件」段已给出从 metadata 生成它们的代码，原样放在脚本头部。契约里 -g group.list 直接引用 group.list，【不要】把 metadata 传给 -g。
+
+【输出】
+9. #!/bin/bash 开头，set -euo pipefail，顶部 export PATH=/opt/conda/bin:$PATH 和 AMPLICON_ROOT=/opt/amplicon。
+10. 只输出 bash 脚本，不要解释、不要 markdown 代码块。简洁：必要变量 + 每步 bash 调用行 + 简短进度 echo；禁止照抄契约原文、禁止大段行内注释。"""
 
             user_message = f"""请根据以下信息生成完整的执行脚本：
 
@@ -958,6 +996,12 @@ class ChatService:
 
 ## 用户上传文件
 {upload_desc}
+
+## 样本与文件映射（已确定，原样保留到脚本；禁止从文件名猜样本名）
+{sample_mapping_block or "（无 FASTQ_PAIR 上传，本链路无 per-sample 样本）"}
+
+## 自动派生文件（原样放脚本头部；契约里 -g group.list 等直接引用，不要传 metadata）
+{derived_block or "（本链路无需 group.list/vs.list/rf.list）"}
 
 ## 文件需求定义
 {required_files_desc}
@@ -994,6 +1038,13 @@ class ChatService:
             )
             response.raise_for_status()
             result = response.json()
+            usage = result.get("usage", {})
+            logger.info(
+                f"[ChatService] LLM 编排 token: "
+                f"prompt={usage.get('prompt_tokens')} "
+                f"completion={usage.get('completion_tokens')} "
+                f"total={usage.get('total_tokens')}"
+            )
             generated = result["choices"][0]["message"]["content"]
 
             # 去掉可能的 markdown 代码块包裹
