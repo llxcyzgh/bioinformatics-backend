@@ -37,6 +37,7 @@ class Task(Model):
             "id": self.id,
             "uuid": self.uuid,
             "name": self.name,
+            "project_id": self.project_id,
             "user_id": self.user_id,
             "status": self.status,
             "qsub_id": self.qsub_id,
