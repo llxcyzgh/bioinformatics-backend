@@ -23,6 +23,9 @@ from app.services.domain_classifier import DomainClassifier
 from app.services.upload_service import UploadService
 from app.services.intent_agent import IntentAgent
 from app.services.tool_genesis_service import ToolGenesisService
+from app.services.analysis_router import AnalysisRouter
+from app.services.standalone_analysis_agent import StandaloneAnalysisAgent
+from app.services.standalone_script_service import StandaloneScriptService
 from config.llm import DASHSCOPE_API_BASE, DASHSCOPE_API_KEY, DASHSCOPE_MODEL_NAME, LLM_CODEGEN_TIMEOUT, LLM_PARSER_TIMEOUT
 from config.upload import UPLOAD_DIR
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
@@ -297,6 +300,232 @@ class ChatService:
         except Exception as e:
             logger.error(f"[ChatService] 意图识别/规划异常，回退到通用 AI: {e}")
             return AIService.generate_response(task.id, user_message, history)
+
+    # ─── Path B：独立单步分析闭环（见 STANDALONE_ANALYSIS_PLAN.md）──────────
+    @staticmethod
+    def _standalone_route(
+        db: Session, content: str, history_dicts: list[dict],
+        task: Task, user_id: int, verdict: dict, form: dict,
+    ) -> dict:
+        """Path B 入口：合理生信 + 单步独立分析 → 召回模板 / 理解 → 清单或追问。
+
+        ① 先召回（§4.6 retrieve-then-judge）：高置信同义命中已归档模板 → 原样重放清单（复用脚本）。
+        ② 未命中 → StandaloneAnalysisAgent.understand 从头理解：
+           - sufficient   → markdown 数据清单 + file_request（触发既有上传面板），完整契约存入 data 供 P3 生成 / P4 执行。
+           - 不足         → clarification 编号追问（一次问全，像专家对待小白）。
+        """
+        # ① 召回
+        tmpl = StandaloneScriptService.recall_template(db, content)
+        if tmpl and tmpl.get("data_requirements"):
+            logger.info(f"[ChatService] Path B 命中模板 {tmpl.get('tool_id')}，重放清单")
+            return ChatService._build_standalone_checklist(
+                tmpl.get("analysis_type") or form.get("analysis_type") or "独立分析",
+                tmpl.get("data_requirements") or [],
+                tmpl.get("params") or [],
+                runtime_hint=tmpl.get("runtime_hint", ""),
+                reused=True,
+                tool_id=tmpl.get("tool_id"),
+            )
+
+        # ② 未命中 → 先征得用户同意再生成（避免静默几十秒跑生成，UX 差）。
+        #    同意 → 下一轮 _handle_standalone_generate 现场生成；不同意/改主意 → 正常分流。
+        #    理解与生成都不在这一步，故本步很快（仅召回 + 一次廉价形态判定，都已在上游完成）。
+        analysis_type = form.get("analysis_type") or "独立分析"
+        logger.info(f"[ChatService] Path B 未命中模板，征求生成同意: {analysis_type}")
+        return {
+            "type": "clarification",
+            "content": (
+                f"这个分析（**{analysis_type}**）我还没有现成的脚本模板。\n"
+                f"我可以现在帮你现场生成一个自包含脚本（大概几十秒）。要生成吗？\n"
+                f"（回复「好」「生成」即可；想换个分析或先聊聊就说）"
+            ),
+            "data": json.dumps({
+                "standalone": True,
+                "standalone_codegen_offer": True,
+                "analysis_type": analysis_type,
+                "user_query": content,
+            }, ensure_ascii=False),
+        }
+
+    @staticmethod
+    def _pending_standalone_offer(history: list) -> dict | None:
+        """看上一条 assistant 消息是否 Path B 的『要现在生成吗』提议。
+
+        返回 {analysis_type, user_query} 或 None。仅识别紧邻的提议（offer 之后若系统已回过
+        别的消息则不再触发）——同 _pending_codegen_offer 的紧邻语义。
+        """
+        for msg in reversed(history):
+            if msg.role != "assistant":
+                continue
+            if not msg.data:
+                return None
+            try:
+                data = json.loads(msg.data)
+            except (json.JSONDecodeError, TypeError):
+                return None
+            if not data.get("standalone_codegen_offer"):
+                return None
+            return {
+                "analysis_type": data.get("analysis_type", ""),
+                "user_query": data.get("user_query", ""),
+            }
+        return None
+
+    @staticmethod
+    def _handle_standalone_generate(
+        db: Session, offer: dict, content: str, task: Task, user_id: int,
+    ) -> dict:
+        """用户同意现生成 → 理解(原查询) → 生成自包含脚本 + 归档 → 清单(file_request)。
+
+        理解针对【提议时记下的原查询】（不是「好/生成吧」这句），故能拿到精确列名/参数。
+        生成失败/理解不足 → 友好提示，不崩、不伪造。
+        """
+        user_query = (offer.get("user_query") or "").strip() or content
+        analysis_type = offer.get("analysis_type") or "独立分析"
+
+        result = StandaloneAnalysisAgent.understand(user_query, None)
+        at = result.get("analysis_type") or analysis_type
+
+        if not result.get("sufficient"):
+            questions = result.get("questions") or []
+            if questions:
+                body = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(questions))
+                text = f"生成前先一次性确认几件事：\n{body}"
+            else:
+                text = "要生成这个分析，我还需要了解你的数据（格式/关键列）和目标，请补充。"
+            logger.info(f"[ChatService] Path B 同意生成但信息不足，追问 {len(questions)} 问")
+            return {
+                "type": "clarification",
+                "content": text,
+                "data": json.dumps({"standalone": True, "analysis_type": at}, ensure_ascii=False),
+            }
+
+        archived = None
+        try:
+            archived = StandaloneScriptService.generate_and_archive(
+                at,
+                result.get("data_requirements") or [],
+                result.get("params") or [],
+                result.get("runtime_hint", ""),
+                user_query, db, user_id,
+            )
+        except Exception as e:
+            logger.warning(f"[ChatService] Path B 生成/归档失败: {type(e).__name__}: {e}")
+
+        if not archived:
+            return {
+                "type": "clarification",
+                "content": "抱歉，脚本这次没生成成功，换个说法再试一次？",
+                "data": json.dumps({"standalone": True, "analysis_type": at}, ensure_ascii=False),
+            }
+
+        tool_id = archived.get("tool_id")
+        logger.info(f"[ChatService] Path B 已生成归档: {tool_id}")
+        resp = ChatService._build_standalone_checklist(
+            at,
+            result.get("data_requirements") or [],
+            result.get("params") or [],
+            runtime_hint=result.get("runtime_hint", ""),
+            reused=False,
+            tool_id=tool_id,
+        )
+        # 前置「已生成」提示（前端对 file_request 的 ✅ 行有专门渲染）
+        resp["content"] = f"✅ 脚本已生成并归档（{tool_id}）。\n\n" + resp["content"]
+        return resp
+
+    @staticmethod
+    def _build_standalone_checklist(
+        analysis_type: str, data_requirements: list[dict], params: list[dict],
+        runtime_hint: str = "", reused: bool = False, tool_id: int | None = None,
+    ) -> dict:
+        """把 data_requirements/params 渲染成 markdown 清单 + file_request（触发既有上传面板）。
+
+        返回 type=file_request 消息体：
+        - content = 清单 markdown（必需/可选 tag、列名、格式、参数默认），前端按既有规则渲染文本；
+        - data    = {requiredFiles(供上传面板 slot), standalone, analysis_type, data_requirements,
+                     params, runtime_hint, reused, tool_id}（完整契约，供 P3 生成 / P4 执行读取）；
+        - required_files = slot 列表（{label,extensions,required,...}，供 confirm_upload 按 label 校验扩展名）。
+        """
+        req_items = [d for d in data_requirements if d.get("required")]
+        opt_items = [d for d in data_requirements if not d.get("required")]
+
+        lines: list[str] = []
+        if reused:
+            lines.append(f"💡 我之前生成过【{analysis_type}】的模板，直接复用。")
+        lines.append(f"### 📋 {analysis_type} —— 请准备以下数据")
+
+        def _fmt_item(d: dict, tag: str) -> None:
+            lines.append(f"- **{d.get('label', '')}** 〔{tag}〕")
+            sub: list[str] = []
+            fmt = d.get("format", "")
+            if fmt:
+                sub.append(f"格式 {fmt}")
+            cols = d.get("columns") or []
+            if cols:
+                sub.append("列：" + " / ".join(cols))
+            if sub:
+                lines.append("  - " + "；".join(sub))
+            desc = d.get("columns_desc", "")
+            if desc:
+                lines.append(f"  - {desc}")
+
+        for d in req_items:
+            _fmt_item(d, "必需")
+        for d in opt_items:
+            _fmt_item(d, "可选")
+
+        if params:
+            lines.append("")
+            lines.append("**可选参数**（未指定用默认值）：")
+            for p in params:
+                opts = p.get("options") or []
+                tail = f"（可选：{' / '.join(opts)}）" if opts else ""
+                lines.append(f"- {p.get('label', '')}：默认「{p.get('default', '')}」{tail}")
+
+        lines.append("")
+        lines.append("准备好后请上传上述〔必需〕文件。")
+        content = "\n".join(lines)
+
+        # 上传面板 slot：label 作为 confirm_upload 的 slot_label 锚点
+        required_files = [
+            {
+                "typeId": d.get("key", "") or d.get("label", ""),
+                "label": d.get("label", ""),
+                "description": d.get("columns_desc", ""),
+                "extensions": ChatService._fmt_extensions(d.get("format", "")),
+                "required": bool(d.get("required", False)),
+                "multiple": bool(d.get("multiple", False)),
+            }
+            for d in data_requirements
+        ]
+        labels = [d.get("label", "") for d in data_requirements]
+
+        data = {
+            "requiredFiles": labels,
+            "standalone": True,
+            "analysis_type": analysis_type,
+            "data_requirements": data_requirements,
+            "params": params,
+            "runtime_hint": runtime_hint,
+            "reused": reused,
+            "tool_id": tool_id,
+        }
+        return {
+            "type": "file_request",
+            "content": content,
+            "data": json.dumps(data, ensure_ascii=False),
+            "required_files": json.dumps(required_files, ensure_ascii=False),
+        }
+
+    @staticmethod
+    def _fmt_extensions(fmt: str) -> list[str]:
+        """格式串 → 扩展名白名单。TSV→[.tsv]；CSV→[.csv]；TSV/CSV→两者；未知→表格式兜底。"""
+        fmt = (fmt or "").upper()
+        exts: list[str] = []
+        for token in ("TSV", "CSV", "TXT"):
+            if token in fmt:
+                exts.append("." + token.lower())
+        return exts or [".tsv", ".csv", ".txt"]
 
     @staticmethod
     def _pending_codegen_offer(history: list) -> dict | None:
@@ -599,8 +828,28 @@ class ChatService:
 
         domain_id = task.domain_id  # 领域已定时即当前 task.domain_id（已钉/刚钉/刚切换）
 
+        # Path B 生成提议响应优先：「好/生成吧」这类回复不是生信查询，会被相关性闸判出 B 路，
+        # 故在正常 dispatch 前先拦截（同意 → 现生成；拒绝 → 礼貌收尾；其他 → 落到正常分流）。
+        _standalone_resp = None
+        _pending_standalone = ChatService._pending_standalone_offer(history)
+        if _pending_standalone is not None:
+            _acceptance = ChatService._judge_codegen_acceptance(combined_content)
+            logger.info(f"[ChatService] standalone 生成提议待响应，判定: {_acceptance}")
+            if _acceptance == "accept":
+                _standalone_resp = ChatService._handle_standalone_generate(
+                    db, _pending_standalone, combined_content, task, user_id
+                )
+            elif _acceptance == "decline":
+                _standalone_resp = {
+                    "type": "clarification",
+                    "content": "好的，先不生成。需要的时候随时跟我说。",
+                    "data": "",
+                }
+
         # 意图识别 + 路由：仅在通过相关性闸（领域已定）时进行
-        if domain is not None:
+        if _standalone_resp is not None:
+            ai_response = _standalone_resp
+        elif domain is not None:
             # Phase 3：若上一轮是能力缺口提议，本轮先判是否同意现生成
             offer = ChatService._pending_codegen_offer(history)
             if offer is not None:
@@ -622,6 +871,17 @@ class ChatService:
         elif verdict and verdict.get("in_scope") and len(verdict.get("candidates") or []) >= 2:
             # 多库低置信：列出候选领域请用户确认，不钉领域（T4）
             ai_response = ChatService._disambiguate_response(verdict["candidates"])
+        elif verdict and verdict.get("plausible_bioinfo"):
+            # 合理生信但不属于任何 typed 领域（且无多库歧义）→ Path B 候选：
+            # 形态判定器区分单步(standalone)与多步(pipeline)。单步走 B 独立闭环，
+            # 多步保守归 uncertain（老路 planner 需 typed 领域，此处无，先追问引导）。
+            form = AnalysisRouter.classify_form(combined_content, verdict)
+            if form.get("form") == "standalone":
+                ai_response = ChatService._standalone_route(
+                    db, combined_content, history_dicts, task, user_id, verdict, form
+                )
+            else:
+                ai_response = ChatService._uncertain_response(verdict)
         elif verdict and verdict["confidence"] == "high":
             # 明确与生信分析无关：友好拒绝，不钉领域（task.domain_id 保持 NULL）
             ai_response = ChatService._out_of_scope_response(verdict)

@@ -46,10 +46,14 @@ def _parse_examples(raw: str) -> list[str]:
 class DomainClassifier:
     """领域分流器。
 
-    classify_with_relevance 返回 {domain_id, in_scope, confidence, reason}：
+    classify_with_relevance 返回 {domain_id, in_scope, confidence, reason, plausible_bioinfo}：
       - in_scope=True                 → 属于某领域，domain_id 给出，可钉领域继续解析/规划；
       - in_scope=False, high          → 明确与生信分析无关（out_of_scope），应友好拒绝、不钉领域；
       - in_scope=False, medium/low/uncertain → 不确定，应追问引导、不钉领域、不硬拒。
+      - plausible_bioinfo=True        → 即便不属于任何 typed 领域，仍是合理生信分析任务
+        （生存分析/火山图/Lasso 等，见 STANDALONE_ANALYSIS_PLAN.md §1）。这类无 typed 域的
+        合理生信任务交给 Path B（form 判定 → 独立单步闭环），而非 out_of_scope。
+        in_scope=True 时必然 plausible_bioinfo=True；只在 in_scope=False 时该字段才起分流作用。
     """
 
     @staticmethod
@@ -63,9 +67,10 @@ class DomainClassifier:
 
     @staticmethod
     def classify_with_relevance(db: Session, content: str) -> dict:
-        """返回 {domain_id, in_scope, confidence, reason}。
+        """返回 {domain_id, in_scope, confidence, reason, plausible_bioinfo, candidates}。
 
-        domain_id 可能为 None（无启用领域 / out_of_scope / uncertain）。
+        domain_id 可能为 None（无启用领域 / out_of_scope / uncertain / 合理生信但无 typed 域）。
+        plausible_bioinfo：即便无 typed 域，是否仍是合理生信任务（True → Path B 候选）。
         """
         domains = Domain.where(db, is_active=1).order_by(Domain.sort_order.asc()).all()
         if not domains:
@@ -74,6 +79,8 @@ class DomainClassifier:
                 "in_scope": False,
                 "confidence": "uncertain",
                 "reason": "无启用领域",
+                "plausible_bioinfo": False,
+                "candidates": [],
             }
 
         # 快路径：唯一关键词高分命中 → 高置信直接命中
@@ -84,6 +91,8 @@ class DomainClassifier:
                 "in_scope": True,
                 "confidence": "high",
                 "reason": "关键词命中",
+                "plausible_bioinfo": True,
+                "candidates": [],
             }
 
         # 原始测序数据 → 归 amplicon（唯一含"从原始数据跑到下游方法"全流程的领域）。
@@ -100,6 +109,8 @@ class DomainClassifier:
                     "in_scope": True,
                     "confidence": "high",
                     "reason": "原始测序数据→扩增子全流程领域",
+                    "plausible_bioinfo": True,
+                    "candidates": [],
                 }
 
         # LLM 相关性判定（描述由 T1 在导入时填充；单库时唯一候选仍验相关性）
@@ -136,6 +147,7 @@ class DomainClassifier:
             "in_scope": False,
             "confidence": "uncertain",
             "reason": "无法判定（未配置 key / 超时 / 解析失败）",
+            "plausible_bioinfo": False,
             "candidates": [],
         }
         if not DASHSCOPE_API_KEY or not (content or "").strip():
@@ -154,6 +166,7 @@ class DomainClassifier:
             + "\n\n只输出 JSON（不要 markdown 代码块或解释）：\n"
             '{"domain_code": "<领域 code，或 none>", '
             '"in_scope": <true|false>, '
+            '"plausible_bioinfo": <true|false>, '
             '"confidence": "high|medium|low", '
             '"candidates": ["<可信候选领域 code，按可能性排序，1-3 个；domain_code=none 时可为空>"], '
             '"reason": "<简短中文理由>"}\n'
@@ -163,9 +176,13 @@ class DomainClassifier:
             "用户提到原始测序数据（fastq/fasta/双端/原始数据/下机数据/原始fastq）时，"
             "即使同时点了某个下游方法，也应归入【包含从原始数据跑到该方法的完整流程】的领域，"
             "而不是仅做单步下游分析的领域（后者要求用户已具备计算好的丰度表/特征表/距离矩阵）。\n"
+            "- **plausible_bioinfo**：即使 domain_code=none，该输入是否仍是【一个合理的生物信息分析任务】"
+            "（而非闲聊/无关）？例如『生存分析』『火山图』『Lasso 回归』『基因表达热图』虽不属下列"
+            "任一具体领域（这些多是转录组/临床统计的单步分析），plausible_bioinfo 仍应为 true；"
+            "而『今天天气』『帮我订餐』则为 false。in_scope=true 时 plausible_bioinfo 必然为 true。\n"
             "- 输入明显属于某领域 → 对应 code、in_scope=true、high；\n"
             "- 输入明显与生物信息分析无关（天气、闲聊、订餐、新闻等）→ "
-            "domain_code=\"none\"、in_scope=false、high；\n"
+            "domain_code=\"none\"、in_scope=false、plausible_bioinfo=false、high；\n"
             "- 像是某领域但不够确定 → medium，并把可能的领域都放进 candidates；\n"
             "- 信息太少无法判断 → low（domain_code 可为 none）。"
         )
@@ -193,10 +210,13 @@ class DomainClassifier:
 
         code = str(data.get("domain_code") or "").strip().strip("`").strip()
         in_scope_raw = data.get("in_scope")
+        plausible_raw = data.get("plausible_bioinfo")
         confidence = str(data.get("confidence") or "").strip().lower()
         reason = str(data.get("reason") or "").strip()
         if confidence not in {"high", "medium", "low"}:
             confidence = "low"
+        # plausible_bioinfo：LLM 缺字段时保守取 False（不误导向 Path B）
+        plausible = bool(plausible_raw) if plausible_raw is not None else False
 
         # 解析 candidates（list 或逗号串）→ 映射到真实领域对象
         candidate_objs = DomainClassifier._map_candidates(domains, data.get("candidates"))
@@ -204,13 +224,15 @@ class DomainClassifier:
         is_none = (not code) or code.lower() == "none"
         if is_none:
             logger.info(
-                f"[DomainClassifier] LLM 判定不属于任何领域 (confidence={confidence})"
+                f"[DomainClassifier] LLM 判定不属于任何领域 (confidence={confidence}, "
+                f"plausible_bioinfo={plausible})"
             )
             return {
                 "domain_id": None,
                 "in_scope": False,
                 "confidence": confidence,
                 "reason": reason or "不属于任何启用领域",
+                "plausible_bioinfo": plausible,
                 "candidates": candidate_objs,
             }
 
@@ -225,6 +247,7 @@ class DomainClassifier:
                 "in_scope": False,
                 "confidence": confidence,
                 "reason": f"领域 code {code!r} 无法匹配",
+                "plausible_bioinfo": plausible,
                 "candidates": candidate_objs,
             }
 
@@ -242,6 +265,8 @@ class DomainClassifier:
             "in_scope": in_scope,
             "confidence": confidence,
             "reason": reason,
+            # 命中具体领域 → 必然是合理生信任务
+            "plausible_bioinfo": True,
             "candidates": candidate_objs,
         }
 
