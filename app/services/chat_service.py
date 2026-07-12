@@ -1513,6 +1513,16 @@ class ChatService:
         task = ChatService._get_or_create_task(db, None, task_uuid, project_id, user_id)
         logger.info(f"[ChatService] 文件上传确认: task={task.id}, files={len(file_mappings)}")
 
+        # 将上传文件回填关联到当前任务（修复上传时 task_id 未设置导致文件树 input 为空的问题）
+        for fm in file_mappings:
+            fid = fm.get("file_id")
+            if not fid:
+                continue
+            file_record = UploadService.find(db, fid, user_id)
+            if file_record and file_record.task_id != task.id:
+                file_record.task_id = task.id
+                file_record.save()
+
         # 找到最新的 file_request 消息，获取 required_files 和 tool_ids
         fr_message = (
             Message.where(db, task_id=task.id)
