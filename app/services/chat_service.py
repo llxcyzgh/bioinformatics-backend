@@ -1816,6 +1816,8 @@ echo "[$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')] ========== Simulation Jo
         shared_dir = os.getenv("SHARED_DIR", os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "shared")))
         host_script = os.path.join(shared_dir, f"task_{tid}.sh")
         host_script = os.path.normpath(host_script)
+        # 确保目录存在（避免 FileNotFoundError）
+        os.makedirs(shared_dir, exist_ok=True)
         with open(host_script, "w", encoding="utf-8", newline="\n") as f:
             f.write(script)
 
@@ -1941,6 +1943,8 @@ export PATH=/opt/conda/bin:$PATH
         shared_dir = os.getenv("SHARED_DIR", os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "shared")))
         host_script = os.path.join(shared_dir, f"task_{tid}.sh")
         host_script = os.path.normpath(host_script)
+        # 确保目录存在（避免 FileNotFoundError）
+        os.makedirs(shared_dir, exist_ok=True)
         with open(host_script, "w", encoding="utf-8", newline="\n") as f:
             f.write(script)
 
@@ -2112,6 +2116,8 @@ export PATH=/opt/conda/bin:$PATH
         shared_dir = os.getenv("SHARED_DIR", os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "shared")))
         host_script = os.path.join(shared_dir, f"task_{tid}.sh")
         host_script = os.path.normpath(host_script)
+        # 确保目录存在（避免 FileNotFoundError）
+        os.makedirs(shared_dir, exist_ok=True)
         with open(host_script, "w", encoding="utf-8", newline="\n") as f:
             f.write(script)
 
