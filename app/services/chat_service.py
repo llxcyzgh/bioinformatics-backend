@@ -74,6 +74,34 @@ def _sanitize_param_overrides(tool_chain) -> dict:
 class ChatService:
 
     @staticmethod
+    def _generate_task_name(content: str) -> str:
+        """从用户输入生成短小有意义的任务名称（最长20字）"""
+        import re
+        text = content.strip()
+        if not text:
+            return "新任务"
+
+        # 移除标点符号和多余空格
+        text = re.sub(r'[^\w\s一-鿿]', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+
+        # 提取关键术语（生信相关关键词）
+        keywords = ['PCR', '测序', '扩增子', '16S', 'ITS', '宏基因组', '转录组', 'PCoA',
+                    '差异', '聚类', '多样性', '物种', '丰度', '系统发育', '功能',
+                    'DADA2', 'LEfSe', 'PICRUSt', '聚类', 'OTU', 'ASV', '热图', 'PCA']
+        found_keywords = [kw for kw in keywords if kw in text]
+
+        if found_keywords:
+            # 如果找到关键词，取前2个+简短后缀
+            name = '+'.join(found_keywords[:2])
+            if len(found_keywords) > 2:
+                name += f'等{len(found_keywords)}项分析'
+            return name
+
+        # 没有关键词时，截取前15字
+        return text[:15] + ('...' if len(text) > 15 else '')
+
+    @staticmethod
     def _get_or_create_task(db: Session, task_id: Optional[int], task_uuid: Optional[str], project_id: int, user_id: int, task_name: str = "") -> Task:
         if task_uuid:
             task = Task.where(db, uuid=task_uuid).first()
@@ -733,8 +761,8 @@ class ChatService:
         image_filenames: list[str] | None = None,
         images: list[UploadFile] | None = None,
     ) -> dict:
-        # Build task name from content or image filenames
-        task_name = content.strip() if content.strip() else (image_filenames[0] if image_filenames else "")
+        # Build task name from content (generate short, meaningful name)
+        task_name = ChatService._generate_task_name(content) if content.strip() else (image_filenames[0] if image_filenames else "")
 
         task = ChatService._get_or_create_task(db, task_id, task_uuid, project_id, user_id, task_name)
 
