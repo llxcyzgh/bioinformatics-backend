@@ -223,3 +223,18 @@ class ChatController:
             return JSONResponse(status_code=status.HTTP_200_OK, content=result)
         except ValueError as e:
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)})
+
+    @staticmethod
+    def list_executions(
+        user_id: int,
+        db: Session,
+    ) -> JSONResponse:
+        """获取当前用户的所有执行记录（用于前端文件树显示脚本）"""
+        try:
+            from app.services.execution_service import ExecutionService
+            executions = ExecutionService.list_by_user(db, user_id)
+            data = [exec.to_dict() for exec in executions]
+            return JSONResponse(status_code=status.HTTP_200_OK, content={"data": data})
+        except Exception as e:
+            logger.error(f"获取执行记录失败: {e}")
+            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": str(e)})

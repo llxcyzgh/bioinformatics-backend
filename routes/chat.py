@@ -170,3 +170,15 @@ def reupload_and_execute(
         primer_f=request.primer_f,
         primer_r=request.primer_r,
     )
+
+
+@router.get("/executions")
+def list_executions(
+    current_user: User = Auth,
+    db: Session = Depends(get_db),
+):
+    """获取当前用户的所有执行记录（用于前端文件树显示脚本）"""
+    return ChatController.list_executions(
+        user_id=current_user.id,
+        db=db,
+    )

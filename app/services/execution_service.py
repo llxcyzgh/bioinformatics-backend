@@ -114,3 +114,14 @@ class ExecutionService:
             .order_by(Execution.id.desc())
             .first()
         )
+
+    @staticmethod
+    def list_by_user(db: Session, user_id: int) -> list:
+        """获取用户的所有执行记录（用于前端文件树显示脚本）"""
+        return (
+            db.query(Execution)
+            .join(Task, Execution.task_id == Task.id)
+            .filter(Task.user_id == user_id, Execution.deleted_at == 0, Task.deleted_at == 0)
+            .order_by(Execution.id.desc())
+            .all()
+        )
