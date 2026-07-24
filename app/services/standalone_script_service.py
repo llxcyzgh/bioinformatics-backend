@@ -306,7 +306,9 @@ class StandaloneScriptService:
         """落盘脚本 + 写/更新 Script 模板行（全契约存 md_content）。幂等：同 analysis_type 复用。"""
         domain_id = _resolve_domain_id(db)
         language = gen.get("language") or "R"
-        ext = "R" if language.startswith("r") else "py"
+        _lang = language.lower()
+        # bash(Agent 产物)→.sh；R→.R；python→.py
+        ext = "R" if _lang.startswith("r") else ("py" if _lang.startswith("py") else "sh")
         slug = gen["slug"]
         tool_id = f"{STANDALONE_PREFIX}{slug}"
 

@@ -26,6 +26,7 @@ from app.services.tool_genesis_service import ToolGenesisService
 from app.services.analysis_router import AnalysisRouter
 from app.services.standalone_analysis_agent import StandaloneAnalysisAgent
 from app.services.standalone_script_service import StandaloneScriptService
+from config.codeagent import CODEAGENT_ENABLED
 from config.llm import DASHSCOPE_API_BASE, DASHSCOPE_API_KEY, DASHSCOPE_MODEL_NAME, LLM_CODEGEN_TIMEOUT, LLM_PARSER_TIMEOUT
 from config.upload import UPLOAD_DIR
 from pkg.amplicon.amplicon_tools import DATA_TYPE_NAMES
@@ -353,6 +354,7 @@ class ChatService:
                 runtime_hint=tmpl.get("runtime_hint", ""),
                 reused=True,
                 tool_id=tmpl.get("tool_id"),
+                user_query=content,
             )
 
         # ② 未命中 → 先征得用户同意再生成（避免静默几十秒跑生成，UX 差）。
@@ -428,6 +430,25 @@ class ChatService:
                 "data": json.dumps({"standalone": True, "analysis_type": at}, ensure_ascii=False),
             }
 
+        # Agent 路（CODEAGENT_ENABLED）：上传后才生成+验证，此处只出清单（不盲生成）。
+        if CODEAGENT_ENABLED:
+            resp = ChatService._build_standalone_checklist(
+                at,
+                result.get("data_requirements") or [],
+                result.get("params") or [],
+                runtime_hint=result.get("runtime_hint", ""),
+                reused=False,
+                tool_id=None,
+                user_query=user_query,
+            )
+            resp["content"] = (
+                "📝 已记录分析需求。请上传下面的数据文件——上传完成后我会自动生成代码，"
+                "并在沙箱里**真实跑一遍验证**（可能需要几分钟），通过后再执行。\n\n"
+                + resp["content"]
+            )
+            return resp
+
+        # 老路：上传前一次性盲生成 + 归档
         archived = None
         try:
             archived = StandaloneScriptService.generate_and_archive(
@@ -456,6 +477,7 @@ class ChatService:
             runtime_hint=result.get("runtime_hint", ""),
             reused=False,
             tool_id=tool_id,
+            user_query=user_query,
         )
         # 前置「已生成」提示（前端对 file_request 的 ✅ 行有专门渲染）
         resp["content"] = f"✅ 脚本已生成并归档（{tool_id}）。\n\n" + resp["content"]
@@ -465,6 +487,7 @@ class ChatService:
     def _build_standalone_checklist(
         analysis_type: str, data_requirements: list[dict], params: list[dict],
         runtime_hint: str = "", reused: bool = False, tool_id: int | None = None,
+        user_query: str = "",
     ) -> dict:
         """把 data_requirements/params 渲染成 markdown 清单 + file_request（触发既有上传面板）。
 
@@ -537,6 +560,7 @@ class ChatService:
             "runtime_hint": runtime_hint,
             "reused": reused,
             "tool_id": tool_id,
+            "user_query": user_query,
         }
         return {
             "type": "file_request",
@@ -1500,6 +1524,70 @@ class ChatService:
             return None
 
     @staticmethod
+    def _run_standalone_codeagent(db: Session, task, fr_data: dict,
+                                  enriched_mappings: list[dict], user_id: int) -> dict:
+        """触发 Path B Agent 生成+验证。返回 {gen, script, error}。
+
+        - staged_files：按 data_requirements.key 把上传文件真实路径喂给 Agent（本机 local sandbox 验证）；
+        - script：包了 INPUT_DIR/OUTPUT_DIR 的 wrapper，喂本次 qsub 执行；
+        - gen：Agent 返回（含验证过的 analysis.sh），喂归档（供召回复用）。
+        SDK 延迟 import：后端未装 claude-agent-sdk 时不影响 chat_service 本身 import。
+        """
+        from app.services.standalone_code_agent import StandaloneCodeAgent
+        data_req = fr_data.get("data_requirements") or []
+        staged: dict[str, str] = {}
+        for d in data_req:
+            key = d.get("key") or d.get("label")
+            fm = next((m for m in enriched_mappings if m.get("slot_label") == d.get("label")), None)
+            if fm:
+                fr = UploadService.find(db, fm["file_id"], user_id)
+                if fr:
+                    staged[key] = UploadService.get_file_path(fr)
+        if not staged:
+            return {"gen": None, "script": "", "error": "未找到上传文件，无法生成代码"}
+        try:
+            gen = StandaloneCodeAgent.run(
+                analysis_type=fr_data.get("analysis_type") or "独立分析",
+                data_requirements=data_req,
+                params=fr_data.get("params") or [],
+                runtime_hint=fr_data.get("runtime_hint", ""),
+                content=fr_data.get("user_query", ""),
+                staged_files=staged,
+                job_id=str(task.id),
+            )
+        except Exception as e:
+            logger.error(f"[ChatService] standalone Agent 异常: {type(e).__name__}: {e}")
+            return {"gen": None, "script": "", "error": f"Agent 异常: {type(e).__name__}: {e}"}
+        if not gen:
+            return {"gen": None, "script": "",
+                    "error": "Agent 未能生成可运行脚本（验证未通过或已达次数上限）"}
+        script = ChatService._wrap_standalone_script(
+            task.id, gen["sh_content"], data_req, enriched_mappings)
+        return {"gen": gen, "script": script, "error": ""}
+
+    @staticmethod
+    def _wrap_standalone_script(tid: int, sh_content: str, data_req: list[dict],
+                                enriched_mappings: list[dict]) -> str:
+        """把验证过的 analysis.sh 包一层，使其在 qsub(sge-master) 里可执行：
+        设 INPUT_DIR/OUTPUT_DIR（/shared/task_<tid>/{input,output}）+ 链上传文件进 input + heredoc 跑 analysis.sh。
+        沿用现有 /shared/<stored_name> 约定（同 start_execution 的 file_env_lines）。"""
+        lines = [
+            f'TASK_DIR="/shared/task_{tid}"',
+            'export INPUT_DIR="$TASK_DIR/input"',
+            'export OUTPUT_DIR="$TASK_DIR/output"',
+            'mkdir -p "$INPUT_DIR" "$OUTPUT_DIR"',
+        ]
+        for d in data_req:
+            key = d.get("key") or d.get("label")
+            fm = next((m for m in enriched_mappings if m.get("slot_label") == d.get("label")), None)
+            if fm:
+                stored = fm.get("stored_name") or fm.get("original_name", "")
+                ext = os.path.splitext(stored)[1] or ".csv"
+                lines.append(f'ln -sf "/shared/{stored}" "$INPUT_DIR/{key}{ext}"')
+        lines.append("bash -euo pipefail <<'__CODEAGENT_ANALYSIS_SH__'")
+        return "\n".join(lines) + "\n" + sh_content + "\n__CODEAGENT_ANALYSIS_SH__\n"
+
+    @staticmethod
     def confirm_upload(
         db: Session,
         task_uuid: str,
@@ -1575,6 +1663,27 @@ class ChatService:
 
         if errors:
             return {"success": False, "errors": errors}
+
+        # ─── Path B standalone + Agent：上传后生成+验证（替代上传前盲生成）───
+        if CODEAGENT_ENABLED and fr_data.get("standalone"):
+            ag = ChatService._run_standalone_codeagent(db, task, fr_data, enriched_mappings, user_id)
+            generated_code_algo = ag["script"]   # wrapper（本次执行用）
+            algo_error = ag["error"]
+            gen = ag["gen"]
+            if gen:  # 归档验证过的 analysis.sh（供后续同类任务召回复用）
+                try:
+                    StandaloneScriptService._archive(
+                        {"sh_content": gen["sh_content"], "outputs": gen.get("outputs") or [],
+                         "language": "bash", "slug": f"agent-{task.id}", "aliases": []},
+                        fr_data.get("analysis_type") or "独立分析",
+                        fr_data.get("data_requirements") or [],
+                        fr_data.get("params") or [],
+                        fr_data.get("runtime_hint", ""),
+                        fr_data.get("user_query", ""),
+                        db, user_id)
+                    logger.info(f"[ChatService] standalone Agent 已生成并归档 attempts={gen.get('attempts')}")
+                except Exception as e:
+                    logger.warning(f"[ChatService] standalone Agent 归档失败: {e}")
 
         # ─── 生成编排脚本 ───
         candidate_data_str = fr_message.workflow_candidates or "{}"
