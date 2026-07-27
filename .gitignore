@@ -45,6 +45,12 @@ scripts/Amplicon/generated/
 # Path B 独立分析现生成脚本（StandaloneScriptService 运行时落盘的产物，不入库）
 scripts/standalone/generated/
 
+# Path B codeagent 运行时工作区（Agent 生成+沙箱验证产物：analysis.sh / output / logs，不入库）
+storage/codeagent_jobs/
+
+# 本地 Windows python3 垫片（绕开 Microsoft Store python3 壳的开发机 workaround，不入库）
+.pyshim/
+
 # Ad-hoc test scripts
 test_playwright.py
 *.log
