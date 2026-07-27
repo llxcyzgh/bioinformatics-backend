@@ -1609,7 +1609,7 @@ class ChatService:
             file_record = UploadService.find(db, fid, user_id)
             if file_record and file_record.task_id != task.id:
                 file_record.task_id = task.id
-                file_record.save()
+                file_record.save(db)
 
         # 找到最新的 file_request 消息，获取 required_files 和 tool_ids
         fr_message = (
