@@ -56,16 +56,17 @@ class AuthService:
             return None, "账号密码不匹配"
 
         access_token = AuthService.create_access_token(data={"sub": str(user.id)})
+        user_data = user.to_dict()
         return {
             "token": access_token,
             "token_type": "bearer",
             "user": {
-                "id": user.id,
-                "username": user.username,
-                "realname": user.full_name,
-                "email": user.email,
-                "roles": [{"id": 1, "name": "admin", "description": "Administrator", "created_at": "", "updated_at": ""}] if user.username == "admin" else [{"id": 2, "name": "user", "description": "User", "created_at": "", "updated_at": ""}],
-                "permissions": [{"id": 1, "name": "*", "description": "All permissions", "created_at": "", "updated_at": ""}] if user.username == "admin" else [],
+                "id": user_data["id"],
+                "username": user_data["username"],
+                "realname": user_data["full_name"],
+                "email": user_data["email"],
+                "roles": user_data["roles"],
+                "permissions": user_data["permissions"],
             },
         }, None
 

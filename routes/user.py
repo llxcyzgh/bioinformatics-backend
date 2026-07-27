@@ -3,33 +3,37 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.http.controllers import UserController
+from app.http.middleware import RequireAdmin
 from app.http.requests import CreateUserRequest, UpdateUserRequest
+from app.models import User
 from database import get_db
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.get("/", response_class=JSONResponse)
-def index(db: Session = Depends(get_db)):
+def index(current_user: User = RequireAdmin, db: Session = Depends(get_db)):
     """Get all users
     GET /api/users
-    Requires authentication
+    Requires admin
     """
     return UserController.index(db)
 
 
 @router.get("/{user_id}", response_class=JSONResponse)
-def show(user_id: int, db: Session = Depends(get_db)):
+def show(user_id: int, current_user: User = RequireAdmin, db: Session = Depends(get_db)):
     """Get a specific user
     GET /api/users/{id}
+    Requires admin
     """
     return UserController.show(user_id, db)
 
 
 @router.post("/", response_class=JSONResponse)
-def store(request: CreateUserRequest, db: Session = Depends(get_db)):
+def store(request: CreateUserRequest, current_user: User = RequireAdmin, db: Session = Depends(get_db)):
     """Create a new user
     POST /api/users
+    Requires admin
     """
     return UserController.store(
         str(request.email),
@@ -41,9 +45,10 @@ def store(request: CreateUserRequest, db: Session = Depends(get_db)):
 
 
 @router.put("/{user_id}", response_class=JSONResponse)
-def update(user_id: int, request: UpdateUserRequest, db: Session = Depends(get_db)):
+def update(user_id: int, request: UpdateUserRequest, current_user: User = RequireAdmin, db: Session = Depends(get_db)):
     """Update a user
     PUT /api/users/{id}
+    Requires admin
     """
     return UserController.update(
         user_id,
@@ -55,8 +60,9 @@ def update(user_id: int, request: UpdateUserRequest, db: Session = Depends(get_d
 
 
 @router.delete("/{user_id}", response_class=JSONResponse)
-def destroy(user_id: int, db: Session = Depends(get_db)):
+def destroy(user_id: int, current_user: User = RequireAdmin, db: Session = Depends(get_db)):
     """Delete a user
     DELETE /api/users/{id}
+    Requires admin
     """
     return UserController.destroy(user_id, db)

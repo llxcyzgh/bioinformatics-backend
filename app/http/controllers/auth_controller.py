@@ -51,13 +51,14 @@ class AuthController:
     @staticmethod
     def me(current_user) -> dict:
         """Get current authenticated user"""
+        data = current_user.to_dict()
         return {
-            "id": current_user.id,
-            "username": current_user.username,
-            "realname": current_user.full_name,
-            "email": current_user.email,
-            "roles": [{"id": 1, "name": "admin", "description": "Administrator", "created_at": "", "updated_at": ""}] if current_user.username == "admin" else [{"id": 2, "name": "user", "description": "User", "created_at": "", "updated_at": ""}],
-            "permissions": [{"id": 1, "name": "*", "description": "All permissions", "created_at": "", "updated_at": ""}] if current_user.username == "admin" else [],
+            "id": data["id"],
+            "username": data["username"],
+            "realname": data["full_name"],
+            "email": data["email"],
+            "roles": data["roles"],
+            "permissions": data["permissions"],
         }
 
     @staticmethod
